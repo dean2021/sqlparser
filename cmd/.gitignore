@@ -1,0 +1,9 @@
+.idea/
+*.log
+*.tar.gz
+ns-agent
+.DS_Store
+*/.DS_Store
+build/docker
+/nuclei-templates
+publish
