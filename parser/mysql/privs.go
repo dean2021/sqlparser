@@ -66,9 +66,6 @@ var Priv2SetStr = map[PrivilegeType]string{
 	ReferencesPriv:     "References",
 	LockTablesPriv:     "Lock Tables",
 	CreateTMPTablePriv: "Create Temporary Tables",
-	EventPriv:          "Event",
-	CreateRoutinePriv:  "Create Routine",
-	AlterRoutinePriv:   "Alter Routine",
 	AlterPriv:          "Alter",
 	ExecutePriv:        "Execute",
 	IndexPriv:          "Index",
@@ -77,7 +74,6 @@ var Priv2SetStr = map[PrivilegeType]string{
 	CreateRolePriv:     "Create Role",
 	DropRolePriv:       "Drop Role",
 	ShutdownPriv:       "Shutdown Role",
-	TriggerPriv:        "Trigger",
 }
 
 // SetStr2Priv is the map for privilege set string to privilege type.
@@ -92,15 +88,11 @@ var SetStr2Priv = map[string]PrivilegeType{
 	"References":              ReferencesPriv,
 	"Lock Tables":             LockTablesPriv,
 	"Create Temporary Tables": CreateTMPTablePriv,
-	"Event":                   EventPriv,
-	"Create Routine":          CreateRoutinePriv,
-	"Alter Routine":           AlterRoutinePriv,
 	"Alter":                   AlterPriv,
 	"Execute":                 ExecutePriv,
 	"Index":                   IndexPriv,
 	"Create View":             CreateViewPriv,
 	"Show View":               ShowViewPriv,
-	"Trigger":                 TriggerPriv,
 }
 
 // Priv2UserCol is the privilege to mysql.user table column name.
@@ -257,15 +249,11 @@ const (
 	CreateRolePriv
 	// DropRolePriv is the privilege to drop a role.
 	DropRolePriv
-	// CreateTMPTablePriv is the privilege to create a temporary table.
+
 	CreateTMPTablePriv
-	// LockTablesPriv is the privilege to lock tables.
 	LockTablesPriv
-	// CreateRoutinePriv is the privilege to create a stored routine.
 	CreateRoutinePriv
-	// AlterRoutinePriv is the privilege to alter a stored routine.
 	AlterRoutinePriv
-	// EventPriv is the privilege to event.
 	EventPriv
 
 	// ShutdownPriv the privilege to shutdown a server.
@@ -300,10 +288,8 @@ const (
 // If it's passed to RequestVerification, it means any privilege would be OK.
 const AllPrivMask = AllPriv - 1
 
-// Privileges is the list of all privileges.
 type Privileges []PrivilegeType
 
-// Has checks whether PrivilegeType has the privilege.
 func (privs Privileges) Has(p PrivilegeType) bool {
 	for _, cp := range privs {
 		if cp == p {
@@ -317,10 +303,10 @@ func (privs Privileges) Has(p PrivilegeType) bool {
 var AllGlobalPrivs = Privileges{SelectPriv, InsertPriv, UpdatePriv, DeletePriv, CreatePriv, DropPriv, ProcessPriv, ReferencesPriv, AlterPriv, ShowDBPriv, SuperPriv, ExecutePriv, IndexPriv, CreateUserPriv, CreateTablespacePriv, TriggerPriv, CreateViewPriv, ShowViewPriv, CreateRolePriv, DropRolePriv, CreateTMPTablePriv, LockTablesPriv, CreateRoutinePriv, AlterRoutinePriv, EventPriv, ShutdownPriv, ReloadPriv, FilePriv, ConfigPriv, ReplicationClientPriv, ReplicationSlavePriv}
 
 // AllDBPrivs is all the privileges in database scope.
-var AllDBPrivs = Privileges{SelectPriv, InsertPriv, UpdatePriv, DeletePriv, CreatePriv, DropPriv, ReferencesPriv, LockTablesPriv, CreateTMPTablePriv, EventPriv, CreateRoutinePriv, AlterRoutinePriv, AlterPriv, ExecutePriv, IndexPriv, CreateViewPriv, ShowViewPriv, TriggerPriv}
+var AllDBPrivs = Privileges{SelectPriv, InsertPriv, UpdatePriv, DeletePriv, CreatePriv, DropPriv, ReferencesPriv, LockTablesPriv, CreateTMPTablePriv, AlterPriv, ExecutePriv, IndexPriv, CreateViewPriv, ShowViewPriv}
 
 // AllTablePrivs is all the privileges in table scope.
-var AllTablePrivs = Privileges{SelectPriv, InsertPriv, UpdatePriv, DeletePriv, CreatePriv, DropPriv, IndexPriv, ReferencesPriv, AlterPriv, CreateViewPriv, ShowViewPriv, TriggerPriv}
+var AllTablePrivs = Privileges{SelectPriv, InsertPriv, UpdatePriv, DeletePriv, CreatePriv, DropPriv, IndexPriv, ReferencesPriv, AlterPriv, CreateViewPriv, ShowViewPriv}
 
 // AllColumnPrivs is all the privileges in column scope.
 var AllColumnPrivs = Privileges{SelectPriv, InsertPriv, UpdatePriv, ReferencesPriv}

@@ -35,14 +35,11 @@ type AnalyzeTableStmt struct {
 	AnalyzeOpts    []AnalyzeOpt
 
 	// IndexFlag is true when we only analyze indices for a table.
-	IndexFlag       bool
-	Incremental     bool
-	NoWriteToBinLog bool
+	IndexFlag   bool
+	Incremental bool
 	// HistogramOperation is set in "ANALYZE TABLE ... UPDATE/DROP HISTOGRAM ..." statement.
 	HistogramOperation HistogramOperationType
-	// ColumnNames indicate the columns whose statistics need to be collected.
-	ColumnNames  []model.CIStr
-	ColumnChoice model.ColumnChoice
+	ColumnNames        []*ColumnName
 }
 
 // AnalyzeOptType is the type for analyze options.
@@ -55,7 +52,6 @@ const (
 	AnalyzeOptCMSketchDepth
 	AnalyzeOptCMSketchWidth
 	AnalyzeOptNumSamples
-	AnalyzeOptSampleRate
 )
 
 // AnalyzeOptionString stores the string form of analyze options.
@@ -65,7 +61,6 @@ var AnalyzeOptionString = map[AnalyzeOptionType]string{
 	AnalyzeOptCMSketchWidth: "CMSKETCH WIDTH",
 	AnalyzeOptCMSketchDepth: "CMSKETCH DEPTH",
 	AnalyzeOptNumSamples:    "SAMPLES",
-	AnalyzeOptSampleRate:    "SAMPLERATE",
 }
 
 // HistogramOperationType is the type for histogram operation.
@@ -93,19 +88,15 @@ func (hot HistogramOperationType) String() string {
 // AnalyzeOpt stores the analyze option type and value.
 type AnalyzeOpt struct {
 	Type  AnalyzeOptionType
-	Value ValueExpr
+	Value uint64
 }
 
 // Restore implements Node interface.
 func (n *AnalyzeTableStmt) Restore(ctx *format.RestoreCtx) error {
-	ctx.WriteKeyWord("ANALYZE ")
-	if n.NoWriteToBinLog {
-		ctx.WriteKeyWord("NO_WRITE_TO_BINLOG ")
-	}
 	if n.Incremental {
-		ctx.WriteKeyWord("INCREMENTAL TABLE ")
+		ctx.WriteKeyWord("ANALYZE INCREMENTAL TABLE ")
 	} else {
-		ctx.WriteKeyWord("TABLE ")
+		ctx.WriteKeyWord("ANALYZE TABLE ")
 	}
 	for i, table := range n.TableNames {
 		if i != 0 {
@@ -128,28 +119,14 @@ func (n *AnalyzeTableStmt) Restore(ctx *format.RestoreCtx) error {
 		ctx.WritePlain(" ")
 		ctx.WriteKeyWord(n.HistogramOperation.String())
 		ctx.WritePlain(" ")
-		if len(n.ColumnNames) > 0 {
-			ctx.WriteKeyWord("ON ")
-			for i, columnName := range n.ColumnNames {
-				if i != 0 {
-					ctx.WritePlain(",")
-				}
-				ctx.WriteName(columnName.O)
-			}
-		}
 	}
-	switch n.ColumnChoice {
-	case model.AllColumns:
-		ctx.WriteKeyWord(" ALL COLUMNS")
-	case model.PredicateColumns:
-		ctx.WriteKeyWord(" PREDICATE COLUMNS")
-	case model.ColumnList:
-		ctx.WriteKeyWord(" COLUMNS ")
+	if len(n.ColumnNames) > 0 {
+		ctx.WriteKeyWord("ON ")
 		for i, columnName := range n.ColumnNames {
 			if i != 0 {
 				ctx.WritePlain(",")
 			}
-			ctx.WriteName(columnName.O)
+			ctx.WriteName(columnName.Name.O)
 		}
 	}
 	if n.IndexFlag {
@@ -169,7 +146,7 @@ func (n *AnalyzeTableStmt) Restore(ctx *format.RestoreCtx) error {
 			if i != 0 {
 				ctx.WritePlain(",")
 			}
-			ctx.WritePlainf(" %v ", opt.Value.GetValue())
+			ctx.WritePlainf(" %d ", opt.Value)
 			ctx.WritePlain(AnalyzeOptionString[opt.Type])
 		}
 	}
@@ -194,11 +171,10 @@ func (n *AnalyzeTableStmt) Accept(v Visitor) (Node, bool) {
 }
 
 // DropStatsStmt is used to drop table statistics.
-// if the PartitionNames is not empty, or IsGlobalStats is true, it will contain exactly one table
 type DropStatsStmt struct {
 	stmtNode
 
-	Tables         []*TableName
+	Table          *TableName
 	PartitionNames []model.CIStr
 	IsGlobalStats  bool
 }
@@ -206,14 +182,8 @@ type DropStatsStmt struct {
 // Restore implements Node interface.
 func (n *DropStatsStmt) Restore(ctx *format.RestoreCtx) error {
 	ctx.WriteKeyWord("DROP STATS ")
-
-	for index, table := range n.Tables {
-		if index != 0 {
-			ctx.WritePlain(", ")
-		}
-		if err := table.Restore(ctx); err != nil {
-			return errors.Annotatef(err, "An error occurred while restore DropStatsStmt.Tables[%d]", index)
-		}
+	if err := n.Table.Restore(ctx); err != nil {
+		return errors.Annotate(err, "An error occurred while add table")
 	}
 
 	if n.IsGlobalStats {
@@ -240,13 +210,11 @@ func (n *DropStatsStmt) Accept(v Visitor) (Node, bool) {
 		return v.Leave(newNode)
 	}
 	n = newNode.(*DropStatsStmt)
-	for i, val := range n.Tables {
-		node, ok := val.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.Tables[i] = node.(*TableName)
+	node, ok := n.Table.Accept(v)
+	if !ok {
+		return n, false
 	}
+	n.Table = node.(*TableName)
 	return v.Leave(n)
 }
 
@@ -271,81 +239,5 @@ func (n *LoadStatsStmt) Accept(v Visitor) (Node, bool) {
 		return v.Leave(newNode)
 	}
 	n = newNode.(*LoadStatsStmt)
-	return v.Leave(n)
-}
-
-// LockStatsStmt is the statement node for lock table statistic
-type LockStatsStmt struct {
-	stmtNode
-
-	Tables []*TableName
-}
-
-// Restore implements Node interface.
-func (n *LockStatsStmt) Restore(ctx *format.RestoreCtx) error {
-	ctx.WriteKeyWord("LOCK STATS ")
-	for index, table := range n.Tables {
-		if index != 0 {
-			ctx.WritePlain(", ")
-		}
-		if err := table.Restore(ctx); err != nil {
-			return errors.Annotatef(err, "An error occurred while restore LockStatsStmt.Tables[%d]", index)
-		}
-	}
-	return nil
-}
-
-// Accept implements Node Accept interface.
-func (n *LockStatsStmt) Accept(v Visitor) (Node, bool) {
-	newNode, skipChildren := v.Enter(n)
-	if skipChildren {
-		return v.Leave(newNode)
-	}
-	n = newNode.(*LockStatsStmt)
-	for i, val := range n.Tables {
-		node, ok := val.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.Tables[i] = node.(*TableName)
-	}
-	return v.Leave(n)
-}
-
-// UnlockStatsStmt is the statement node for unlock table statistic
-type UnlockStatsStmt struct {
-	stmtNode
-
-	Tables []*TableName
-}
-
-// Restore implements Node interface.
-func (n *UnlockStatsStmt) Restore(ctx *format.RestoreCtx) error {
-	ctx.WriteKeyWord("UNLOCK STATS ")
-	for index, table := range n.Tables {
-		if index != 0 {
-			ctx.WritePlain(", ")
-		}
-		if err := table.Restore(ctx); err != nil {
-			return errors.Annotatef(err, "An error occurred while restore UnlockStatsStmt.Tables[%d]", index)
-		}
-	}
-	return nil
-}
-
-// Accept implements Node Accept interface.
-func (n *UnlockStatsStmt) Accept(v Visitor) (Node, bool) {
-	newNode, skipChildren := v.Enter(n)
-	if skipChildren {
-		return v.Leave(newNode)
-	}
-	n = newNode.(*UnlockStatsStmt)
-	for i, val := range n.Tables {
-		node, ok := val.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.Tables[i] = node.(*TableName)
-	}
 	return v.Leave(n)
 }

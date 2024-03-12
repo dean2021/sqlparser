@@ -39,7 +39,7 @@ var (
 	_ ExprNode = &IsTruthExpr{}
 	_ ExprNode = &ParenthesesExpr{}
 	_ ExprNode = &PatternInExpr{}
-	_ ExprNode = &PatternLikeOrIlikeExpr{}
+	_ ExprNode = &PatternLikeExpr{}
 	_ ExprNode = &PatternRegexpExpr{}
 	_ ExprNode = &PositionExpr{}
 	_ ExprNode = &RowExpr{}
@@ -512,11 +512,11 @@ type ColumnName struct {
 
 // Restore implements Node interface.
 func (n *ColumnName) Restore(ctx *format.RestoreCtx) error {
-	if n.Schema.O != "" && !ctx.IsCTETableName(n.Table.L) && !ctx.Flags.HasWithoutSchemaNameFlag() {
+	if n.Schema.O != "" {
 		ctx.WriteName(n.Schema.O)
 		ctx.WritePlain(".")
 	}
-	if n.Table.O != "" && !ctx.Flags.HasWithoutTableNameFlag() {
+	if n.Table.O != "" {
 		ctx.WriteName(n.Table.O)
 		ctx.WritePlain(".")
 	}
@@ -582,7 +582,7 @@ func (n *ColumnNameExpr) Restore(ctx *format.RestoreCtx) error {
 
 // Format the ExprNode into a Writer.
 func (n *ColumnNameExpr) Format(w io.Writer) {
-	name := strings.ReplaceAll(n.Name.String(), ".", "`.`")
+	name := strings.Replace(n.Name.String(), ".", "`.`", -1)
 	fmt.Fprintf(w, "`%s`", name)
 }
 
@@ -623,10 +623,7 @@ func (n *DefaultExpr) Restore(ctx *format.RestoreCtx) error {
 
 // Format the ExprNode into a Writer.
 func (n *DefaultExpr) Format(w io.Writer) {
-	fmt.Fprint(w, "DEFAULT")
-	if n.Name != nil {
-		panic("Not implemented")
-	}
+	panic("Not implemented")
 }
 
 // Accept implements Node Accept interface.
@@ -876,8 +873,8 @@ func (n *IsTruthExpr) Accept(v Visitor) (Node, bool) {
 	return v.Leave(n)
 }
 
-// PatternLikeOrIlikeExpr is the expression for like operator, e.g, expr like "%123%"
-type PatternLikeOrIlikeExpr struct {
+// PatternLikeExpr is the expression for like operator, e.g, expr like "%123%"
+type PatternLikeExpr struct {
 	exprNode
 	// Expr is the expression to be checked.
 	Expr ExprNode
@@ -886,8 +883,6 @@ type PatternLikeOrIlikeExpr struct {
 	// Not is true, the expression is "not like".
 	Not bool
 
-	IsLike bool
-
 	Escape byte
 
 	PatChars []byte
@@ -895,54 +890,38 @@ type PatternLikeOrIlikeExpr struct {
 }
 
 // Restore implements Node interface.
-func (n *PatternLikeOrIlikeExpr) Restore(ctx *format.RestoreCtx) error {
+func (n *PatternLikeExpr) Restore(ctx *format.RestoreCtx) error {
 	if err := n.Expr.Restore(ctx); err != nil {
-		return errors.Annotate(err, "An error occurred while restore PatternLikeOrIlikeExpr.Expr")
+		return errors.Annotate(err, "An error occurred while restore PatternLikeExpr.Expr")
 	}
 
-	if n.IsLike {
-		if n.Not {
-			ctx.WriteKeyWord(" NOT LIKE ")
-		} else {
-			ctx.WriteKeyWord(" LIKE ")
-		}
+	if n.Not {
+		ctx.WriteKeyWord(" NOT LIKE ")
 	} else {
-		if n.Not {
-			ctx.WriteKeyWord(" NOT ILIKE ")
-		} else {
-			ctx.WriteKeyWord(" ILIKE ")
-		}
+		ctx.WriteKeyWord(" LIKE ")
 	}
 
 	if err := n.Pattern.Restore(ctx); err != nil {
-		return errors.Annotate(err, "An error occurred while restore PatternLikeOrIlikeExpr.Pattern")
+		return errors.Annotate(err, "An error occurred while restore PatternLikeExpr.Pattern")
 	}
 
 	escape := string(n.Escape)
 	if escape != "\\" {
 		ctx.WriteKeyWord(" ESCAPE ")
 		ctx.WriteString(escape)
+
 	}
 	return nil
 }
 
 // Format the ExprNode into a Writer.
-func (n *PatternLikeOrIlikeExpr) Format(w io.Writer) {
+func (n *PatternLikeExpr) Format(w io.Writer) {
 	n.Expr.Format(w)
-	if n.IsLike {
-		if n.Not {
-			fmt.Fprint(w, " NOT LIKE ")
-		} else {
-			fmt.Fprint(w, " LIKE ")
-		}
+	if n.Not {
+		fmt.Fprint(w, " NOT LIKE ")
 	} else {
-		if n.Not {
-			fmt.Fprint(w, " NOT ILIKE ")
-		} else {
-			fmt.Fprint(w, " ILIKE ")
-		}
+		fmt.Fprint(w, " LIKE ")
 	}
-
 	n.Pattern.Format(w)
 	if n.Escape != '\\' {
 		fmt.Fprint(w, " ESCAPE ")
@@ -951,12 +930,12 @@ func (n *PatternLikeOrIlikeExpr) Format(w io.Writer) {
 }
 
 // Accept implements Node Accept interface.
-func (n *PatternLikeOrIlikeExpr) Accept(v Visitor) (Node, bool) {
+func (n *PatternLikeExpr) Accept(v Visitor) (Node, bool) {
 	newNode, skipChildren := v.Enter(n)
 	if skipChildren {
 		return v.Leave(newNode)
 	}
-	n = newNode.(*PatternLikeOrIlikeExpr)
+	n = newNode.(*PatternLikeExpr)
 	if n.Expr != nil {
 		node, ok := n.Expr.Accept(v)
 		if !ok {
@@ -981,7 +960,7 @@ type ParamMarkerExpr interface {
 	SetOrder(int)
 }
 
-// ParenthesesExpr is the parentheses' expression.
+// ParenthesesExpr is the parentheses expression.
 type ParenthesesExpr struct {
 	exprNode
 	// Expr is the expression in parentheses.

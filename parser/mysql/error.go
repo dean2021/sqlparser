@@ -15,6 +15,7 @@ package mysql
 
 import (
 	"fmt"
+
 	"github.com/pingcap/errors"
 )
 

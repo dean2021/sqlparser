@@ -16,15 +16,15 @@ package mysql
 // MySQL type information.
 const (
 	TypeUnspecified byte = 0
-	TypeTiny        byte = 1 // TINYINT
-	TypeShort       byte = 2 // SMALLINT
-	TypeLong        byte = 3 // INT
+	TypeTiny        byte = 1
+	TypeShort       byte = 2
+	TypeLong        byte = 3
 	TypeFloat       byte = 4
 	TypeDouble      byte = 5
 	TypeNull        byte = 6
 	TypeTimestamp   byte = 7
-	TypeLonglong    byte = 8 // BIGINT
-	TypeInt24       byte = 9 // MEDIUMINT
+	TypeLonglong    byte = 8
+	TypeInt24       byte = 9
 	TypeDate        byte = 10
 	/* TypeDuration original name was TypeTime, renamed to TypeDuration to resolve the conflict with Go type Time.*/
 	TypeDuration byte = 11
@@ -43,7 +43,7 @@ const (
 	TypeLongBlob   byte = 0xfb
 	TypeBlob       byte = 0xfc
 	TypeVarString  byte = 0xfd
-	TypeString     byte = 0xfe /* TypeString is char type */
+	TypeString     byte = 0xfe
 	TypeGeometry   byte = 0xff
 )
 
@@ -74,8 +74,6 @@ const (
 	PreventNullInsertFlag uint = 1 << 20 /* Prevent this Field from inserting NULL values */
 	EnumSetAsIntFlag      uint = 1 << 21 /* Internal: Used for inferring enum eval type. */
 	DropColumnIndexFlag   uint = 1 << 22 /* Internal: Used for indicate the column is being dropped with index */
-	GeneratedColumnFlag   uint = 1 << 23 /* Internal: TiFlash will check this flag and add a placeholder for this column */
-	UnderScoreCharsetFlag uint = 1 << 24 /* Internal: Indicate whether charset is specified by underscore like _latin1'abc' */
 )
 
 // TypeInt24 bounds.

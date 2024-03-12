@@ -49,9 +49,10 @@ func formatENUS(number string, precision string) (string, error) {
 			continue
 		} else if v == '.' && number[1] != '.' {
 			continue
+		} else {
+			number = number[:i]
+			break
 		}
-		number = number[:i]
-		break
 	}
 
 	comma := []byte{','}
@@ -88,10 +89,10 @@ func formatENUS(number string, precision string) (string, error) {
 	return buffer.String(), nil
 }
 
-func formatZHCN(_ string, _ string) (string, error) {
+func formatZHCN(number string, precision string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func formatNotSupport(_ string, _ string) (string, error) {
+func formatNotSupport(number string, precision string) (string, error) {
 	return "", errors.New("not support for the specific locale")
 }

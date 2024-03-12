@@ -157,7 +157,7 @@ func (f *indentFormatter) format(flat bool, format string, args ...interface{}) 
 	case stPERC, stBOLPERC:
 		buf = append(buf, '%')
 	}
-	return fmt.Fprintf(f, string(buf), args...)
+	return f.Write([]byte(fmt.Sprintf(string(buf), args...)))
 }
 
 // Format implements Format interface.
@@ -205,7 +205,7 @@ func OutputFormat(s string) string {
 	return buf.String()
 }
 
-// RestoreFlags mark the Restore format
+// RestoreFlag mark the Restore format
 type RestoreFlags uint64
 
 // Mutually exclusive group of `RestoreFlags`:
@@ -234,30 +234,14 @@ const (
 	RestoreStringWithoutDefaultCharset
 
 	RestoreTiDBSpecialComment
-	SkipPlacementRuleForRestore
-	RestoreWithTTLEnableOff
-	RestoreWithoutSchemaName
-	RestoreWithoutTableName
-	RestoreForNonPrepPlanCache
 )
 
 const (
-	// DefaultRestoreFlags is the default value of RestoreFlags.
 	DefaultRestoreFlags = RestoreStringSingleQuotes | RestoreKeyWordUppercase | RestoreNameBackQuotes
 )
 
 func (rf RestoreFlags) has(flag RestoreFlags) bool {
 	return rf&flag != 0
-}
-
-// HasWithoutSchemaNameFlag returns a boolean indicating when `rf` has `RestoreWithoutSchemaName` flag.
-func (rf RestoreFlags) HasWithoutSchemaNameFlag() bool {
-	return rf.has(RestoreWithoutSchemaName)
-}
-
-// HasWithoutTableNameFlag returns a boolean indicating when `rf` has `RestoreWithoutTableName` flag.
-func (rf RestoreFlags) HasWithoutTableNameFlag() bool {
-	return rf.has(RestoreWithoutTableName)
 }
 
 // HasStringSingleQuotesFlag returns a boolean indicating when `rf` has `RestoreStringSingleQuotes` flag.
@@ -305,67 +289,38 @@ func (rf RestoreFlags) HasNameBackQuotesFlag() bool {
 	return rf.has(RestoreNameBackQuotes)
 }
 
-// HasSpacesAroundBinaryOperationFlag returns a boolean indicating
-// whether `rf` has `RestoreSpacesAroundBinaryOperation` flag.
+// HasSpacesAroundBinaryOperationFlag returns a boolean indicating whether `rf` has `RestoreSpacesAroundBinaryOperation` flag.
 func (rf RestoreFlags) HasSpacesAroundBinaryOperationFlag() bool {
 	return rf.has(RestoreSpacesAroundBinaryOperation)
 }
 
-// HasRestoreBracketAroundBinaryOperation returns a boolean indicating
-// whether `rf` has `RestoreBracketAroundBinaryOperation` flag.
 func (rf RestoreFlags) HasRestoreBracketAroundBinaryOperation() bool {
 	return rf.has(RestoreBracketAroundBinaryOperation)
 }
 
-// HasStringWithoutDefaultCharset returns a boolean indicating
-// whether `rf` has `RestoreStringWithoutDefaultCharset` flag.
 func (rf RestoreFlags) HasStringWithoutDefaultCharset() bool {
 	return rf.has(RestoreStringWithoutDefaultCharset)
 }
 
-// HasStringWithoutCharset returns a boolean indicating whether `rf` has `RestoreStringWithoutCharset` flag.
 func (rf RestoreFlags) HasStringWithoutCharset() bool {
 	return rf.has(RestoreStringWithoutCharset)
 }
 
-// HasTiDBSpecialCommentFlag returns a boolean indicating whether `rf` has `RestoreTiDBSpecialComment` flag.
 func (rf RestoreFlags) HasTiDBSpecialCommentFlag() bool {
 	return rf.has(RestoreTiDBSpecialComment)
-}
-
-// HasSkipPlacementRuleForRestoreFlag returns a boolean indicating whether `rf` has `SkipPlacementRuleForRestore` flag.
-func (rf RestoreFlags) HasSkipPlacementRuleForRestoreFlag() bool {
-	return rf.has(SkipPlacementRuleForRestore)
-}
-
-// HasRestoreWithTTLEnableOff returns a boolean indicating
-// whether to force set TTL_ENABLE='OFF' when restoring a TTL table
-func (rf RestoreFlags) HasRestoreWithTTLEnableOff() bool {
-	return rf.has(RestoreWithTTLEnableOff)
-}
-
-// HasRestoreForNonPrepPlanCache returns a boolean indicating whether `rf` has `RestoreForNonPrepPlanCache` flag.
-func (rf RestoreFlags) HasRestoreForNonPrepPlanCache() bool {
-	return rf.has(RestoreForNonPrepPlanCache)
-}
-
-// RestoreWriter is the interface for `Restore` to write.
-type RestoreWriter interface {
-	io.Writer
-	io.StringWriter
 }
 
 // RestoreCtx is `Restore` context to hold flags and writer.
 type RestoreCtx struct {
 	Flags     RestoreFlags
-	In        RestoreWriter
+	In        io.Writer
 	DefaultDB string
-	CTERestorer
+	CTENames  []string
 }
 
 // NewRestoreCtx returns a new `RestoreCtx`.
-func NewRestoreCtx(flags RestoreFlags, in RestoreWriter) *RestoreCtx {
-	return &RestoreCtx{Flags: flags, In: in, DefaultDB: ""}
+func NewRestoreCtx(flags RestoreFlags, in io.Writer) *RestoreCtx {
+	return &RestoreCtx{flags, in, "", make([]string, 0)}
 }
 
 // WriteKeyWord writes the `keyWord` into writer.
@@ -377,44 +332,39 @@ func (ctx *RestoreCtx) WriteKeyWord(keyWord string) {
 	case ctx.Flags.HasKeyWordLowercaseFlag():
 		keyWord = strings.ToLower(keyWord)
 	}
-	ctx.In.WriteString(keyWord)
+	fmt.Fprint(ctx.In, keyWord)
 }
 
-// WriteWithSpecialComments writes a string with a special comment wrapped.
-func (ctx *RestoreCtx) WriteWithSpecialComments(featureID string, fn func() error) error {
+func (ctx *RestoreCtx) WriteWithSpecialComments(featureID string, fn func()) {
 	if !ctx.Flags.HasTiDBSpecialCommentFlag() {
-		return fn()
+		fn()
+		return
 	}
 	ctx.WritePlain("/*T!")
 	if len(featureID) != 0 {
 		ctx.WritePlainf("[%s]", featureID)
 	}
 	ctx.WritePlain(" ")
-	if err := fn(); err != nil {
-		return err
-	}
+	fn()
 	ctx.WritePlain(" */")
-	return nil
 }
 
 // WriteString writes the string into writer
 // `str` may be wrapped in quotes and escaped according to RestoreFlags.
 func (ctx *RestoreCtx) WriteString(str string) {
 	if ctx.Flags.HasStringEscapeBackslashFlag() {
-		str = strings.ReplaceAll(str, `\`, `\\`)
+		str = strings.Replace(str, `\`, `\\`, -1)
 	}
 	quotes := ""
 	switch {
 	case ctx.Flags.HasStringSingleQuotesFlag():
-		str = strings.ReplaceAll(str, `'`, `''`)
+		str = strings.Replace(str, `'`, `''`, -1)
 		quotes = `'`
 	case ctx.Flags.HasStringDoubleQuotesFlag():
-		str = strings.ReplaceAll(str, `"`, `""`)
+		str = strings.Replace(str, `"`, `""`, -1)
 		quotes = `"`
 	}
-	ctx.In.WriteString(quotes)
-	ctx.In.WriteString(str)
-	ctx.In.WriteString(quotes)
+	fmt.Fprint(ctx.In, quotes, str, quotes)
 }
 
 // WriteName writes the name into writer
@@ -429,57 +379,21 @@ func (ctx *RestoreCtx) WriteName(name string) {
 	quotes := ""
 	switch {
 	case ctx.Flags.HasNameDoubleQuotesFlag():
-		name = strings.ReplaceAll(name, `"`, `""`)
+		name = strings.Replace(name, `"`, `""`, -1)
 		quotes = `"`
 	case ctx.Flags.HasNameBackQuotesFlag():
-		name = strings.ReplaceAll(name, "`", "``")
+		name = strings.Replace(name, "`", "``", -1)
 		quotes = "`"
 	}
-
-	// use `WriteString` directly instead of `fmt.Fprint` to get a better performance.
-	ctx.In.WriteString(quotes)
-	ctx.In.WriteString(name)
-	ctx.In.WriteString(quotes)
+	fmt.Fprint(ctx.In, quotes, name, quotes)
 }
 
 // WritePlain writes the plain text into writer without any handling.
 func (ctx *RestoreCtx) WritePlain(plainText string) {
-	ctx.In.WriteString(plainText)
+	fmt.Fprint(ctx.In, plainText)
 }
 
 // WritePlainf write the plain text into writer without any handling.
 func (ctx *RestoreCtx) WritePlainf(format string, a ...interface{}) {
 	fmt.Fprintf(ctx.In, format, a...)
-}
-
-// CTERestorer is used by WithClause related nodes restore.
-type CTERestorer struct {
-	CTENames []string
-}
-
-// IsCTETableName returns true if the given tableName comes from CTE.
-func (c *CTERestorer) IsCTETableName(nameL string) bool {
-	for _, n := range c.CTENames {
-		if n == nameL {
-			return true
-		}
-	}
-	return false
-}
-
-// RecordCTEName records the CTE name.
-func (c *CTERestorer) RecordCTEName(nameL string) {
-	c.CTENames = append(c.CTENames, nameL)
-}
-
-// RestoreCTEFunc is used to restore CTE.
-func (c *CTERestorer) RestoreCTEFunc() func() {
-	l := len(c.CTENames)
-	return func() {
-		if l == 0 {
-			c.CTENames = nil
-		} else {
-			c.CTENames = c.CTENames[:l]
-		}
-	}
 }

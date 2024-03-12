@@ -25,13 +25,11 @@ import (
 	"github.com/dean2021/sqlparser/parser/model"
 	"github.com/dean2021/sqlparser/parser/mysql"
 	"github.com/pingcap/errors"
-	"github.com/pingcap/failpoint"
 )
 
 var (
 	_ StmtNode = &AdminStmt{}
 	_ StmtNode = &AlterUserStmt{}
-	_ StmtNode = &AlterRangeStmt{}
 	_ StmtNode = &BeginStmt{}
 	_ StmtNode = &BinlogStmt{}
 	_ StmtNode = &CommitStmt{}
@@ -47,20 +45,16 @@ var (
 	_ StmtNode = &SetRoleStmt{}
 	_ StmtNode = &SetDefaultRoleStmt{}
 	_ StmtNode = &SetStmt{}
-	_ StmtNode = &SetSessionStatesStmt{}
 	_ StmtNode = &UseStmt{}
 	_ StmtNode = &FlushStmt{}
 	_ StmtNode = &KillStmt{}
 	_ StmtNode = &CreateBindingStmt{}
 	_ StmtNode = &DropBindingStmt{}
-	_ StmtNode = &SetBindingStmt{}
 	_ StmtNode = &ShutdownStmt{}
 	_ StmtNode = &RestartStmt{}
 	_ StmtNode = &RenameUserStmt{}
 	_ StmtNode = &HelpStmt{}
-	_ StmtNode = &PlanReplayerStmt{}
-	_ StmtNode = &CompactTableStmt{}
-	_ StmtNode = &SetResourceGroupStmt{}
+	_ StmtNode = &PlanRecreatorStmt{}
 
 	_ Node = &PrivElem{}
 	_ Node = &VariableAssignment{}
@@ -101,7 +95,6 @@ type AuthOption struct {
 	// ByAuthString set as true, if AuthString is used for authorization. Otherwise, authorization is done by HashString.
 	ByAuthString bool
 	AuthString   string
-	ByHashString bool
 	HashString   string
 	AuthPlugin   string
 }
@@ -116,7 +109,7 @@ func (n *AuthOption) Restore(ctx *format.RestoreCtx) error {
 	if n.ByAuthString {
 		ctx.WriteKeyWord(" BY ")
 		ctx.WriteString(n.AuthString)
-	} else if n.ByHashString {
+	} else if n.HashString != "" {
 		ctx.WriteKeyWord(" AS ")
 		ctx.WriteString(n.HashString)
 	}
@@ -129,23 +122,12 @@ type TraceStmt struct {
 
 	Stmt   StmtNode
 	Format string
-
-	TracePlan       bool
-	TracePlanTarget string
 }
 
 // Restore implements Node interface.
 func (n *TraceStmt) Restore(ctx *format.RestoreCtx) error {
 	ctx.WriteKeyWord("TRACE ")
-	if n.TracePlan {
-		ctx.WriteKeyWord("PLAN ")
-		if n.TracePlanTarget != "" {
-			ctx.WriteKeyWord("TARGET")
-			ctx.WritePlain(" = ")
-			ctx.WriteString(n.TracePlanTarget)
-			ctx.WritePlain(" ")
-		}
-	} else if n.Format != "row" {
+	if n.Format != "row" {
 		ctx.WriteKeyWord("FORMAT")
 		ctx.WritePlain(" = ")
 		ctx.WriteString(n.Format)
@@ -234,8 +216,7 @@ func (n *ExplainStmt) Restore(ctx *format.RestoreCtx) error {
 	ctx.WriteKeyWord("EXPLAIN ")
 	if n.Analyze {
 		ctx.WriteKeyWord("ANALYZE ")
-	}
-	if !n.Analyze || strings.ToLower(n.Format) != "row" {
+	} else {
 		ctx.WriteKeyWord("FORMAT ")
 		ctx.WritePlain("= ")
 		ctx.WriteString(n.Format)
@@ -262,30 +243,14 @@ func (n *ExplainStmt) Accept(v Visitor) (Node, bool) {
 	return v.Leave(n)
 }
 
-// PlanReplayerStmt is a statement to dump or load information for recreating plans
-type PlanReplayerStmt struct {
+// PlanRecreatorStmt is a statement to dump or load information for recreating plans
+type PlanRecreatorStmt struct {
 	stmtNode
 
-	Stmt                StmtNode
-	Analyze             bool
-	Load                bool
-	HistoricalStatsInfo *AsOfClause
-
-	// Capture indicates 'plan replayer capture <sql_digest> <plan_digest>'
-	Capture bool
-	// Remove indicates `plan replayer capture remove <sql_digest> <plan_digest>
-	Remove bool
-
-	SQLDigest  string
-	PlanDigest string
-
-	// File is used to store 2 cases:
-	// 1. plan replayer load 'file';
-	// 2. plan replayer dump explain <analyze> 'file'
-	File string
-
-	// Fields below are currently useless.
-
+	Stmt    StmtNode
+	Analyze bool
+	Load    bool
+	File    string
 	// Where is the where clause in select statement.
 	Where ExprNode
 	// OrderBy is the ordering expression list.
@@ -295,92 +260,55 @@ type PlanReplayerStmt struct {
 }
 
 // Restore implements Node interface.
-func (n *PlanReplayerStmt) Restore(ctx *format.RestoreCtx) error {
+func (n *PlanRecreatorStmt) Restore(ctx *format.RestoreCtx) error {
 	if n.Load {
-		ctx.WriteKeyWord("PLAN REPLAYER LOAD ")
+		ctx.WriteKeyWord("PLAN RECREATOR LOAD ")
 		ctx.WriteString(n.File)
 		return nil
 	}
-	if n.Capture {
-		ctx.WriteKeyWord("PLAN REPLAYER CAPTURE ")
-		ctx.WriteString(n.SQLDigest)
-		ctx.WriteKeyWord(" ")
-		ctx.WriteString(n.PlanDigest)
-		return nil
-	}
-	if n.Remove {
-		ctx.WriteKeyWord("PLAN REPLAYER CAPTURE REMOVE ")
-		ctx.WriteString(n.SQLDigest)
-		ctx.WriteKeyWord(" ")
-		ctx.WriteString(n.PlanDigest)
-		return nil
-	}
-
-	ctx.WriteKeyWord("PLAN REPLAYER DUMP ")
-
-	if n.HistoricalStatsInfo != nil {
-		ctx.WriteKeyWord("WITH STATS ")
-		if err := n.HistoricalStatsInfo.Restore(ctx); err != nil {
-			return errors.Annotate(err, "An error occurred while restore PlanReplayerStmt.HistoricalStatsInfo")
-		}
-		ctx.WriteKeyWord(" ")
-	}
+	ctx.WriteKeyWord("PLAN RECREATOR DUMP EXPLAIN ")
 	if n.Analyze {
-		ctx.WriteKeyWord("EXPLAIN ANALYZE ")
-	} else {
-		ctx.WriteKeyWord("EXPLAIN ")
+		ctx.WriteKeyWord("ANALYZE ")
 	}
 	if n.Stmt == nil {
-		if len(n.File) > 0 {
-			ctx.WriteString(n.File)
-			return nil
-		}
 		ctx.WriteKeyWord("SLOW QUERY")
 		if n.Where != nil {
 			ctx.WriteKeyWord(" WHERE ")
 			if err := n.Where.Restore(ctx); err != nil {
-				return errors.Annotate(err, "An error occurred while restore PlanReplayerStmt.Where")
+				return errors.Annotate(err, "An error occurred while restore PlanRecreatorStmt.Where")
 			}
 		}
 		if n.OrderBy != nil {
 			ctx.WriteKeyWord(" ")
 			if err := n.OrderBy.Restore(ctx); err != nil {
-				return errors.Annotate(err, "An error occurred while restore PlanReplayerStmt.OrderBy")
+				return errors.Annotate(err, "An error occurred while restore PlanRecreatorStmt.OrderBy")
 			}
 		}
 		if n.Limit != nil {
 			ctx.WriteKeyWord(" ")
 			if err := n.Limit.Restore(ctx); err != nil {
-				return errors.Annotate(err, "An error occurred while restore PlanReplayerStmt.Limit")
+				return errors.Annotate(err, "An error occurred while restore PlanRecreatorStmt.Limit")
 			}
 		}
 		return nil
 	}
 	if err := n.Stmt.Restore(ctx); err != nil {
-		return errors.Annotate(err, "An error occurred while restore PlanReplayerStmt.Stmt")
+		return errors.Annotate(err, "An error occurred while restore PlanRecreatorStmt.Stmt")
 	}
 	return nil
 }
 
 // Accept implements Node Accept interface.
-func (n *PlanReplayerStmt) Accept(v Visitor) (Node, bool) {
+func (n *PlanRecreatorStmt) Accept(v Visitor) (Node, bool) {
 	newNode, skipChildren := v.Enter(n)
 	if skipChildren {
 		return v.Leave(newNode)
 	}
 
-	n = newNode.(*PlanReplayerStmt)
+	n = newNode.(*PlanRecreatorStmt)
 
 	if n.Load {
 		return v.Leave(n)
-	}
-
-	if n.HistoricalStatsInfo != nil {
-		info, ok := n.HistoricalStatsInfo.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.HistoricalStatsInfo = info.(*AsOfClause)
 	}
 
 	if n.Stmt == nil {
@@ -415,67 +343,6 @@ func (n *PlanReplayerStmt) Accept(v Visitor) (Node, bool) {
 		return n, false
 	}
 	n.Stmt = node.(StmtNode)
-	return v.Leave(n)
-}
-
-type CompactReplicaKind string
-
-const (
-	// CompactReplicaKindAll means compacting both TiKV and TiFlash replicas.
-	CompactReplicaKindAll = "ALL"
-
-	// CompactReplicaKindTiFlash means compacting TiFlash replicas.
-	CompactReplicaKindTiFlash = "TIFLASH"
-
-	// CompactReplicaKindTiKV means compacting TiKV replicas.
-	CompactReplicaKindTiKV = "TIKV"
-)
-
-// CompactTableStmt is a statement to manually compact a table.
-type CompactTableStmt struct {
-	stmtNode
-
-	Table          *TableName
-	PartitionNames []model.CIStr
-	ReplicaKind    CompactReplicaKind
-}
-
-// Restore implements Node interface.
-func (n *CompactTableStmt) Restore(ctx *format.RestoreCtx) error {
-	ctx.WriteKeyWord("ALTER TABLE ")
-	n.Table.restoreName(ctx)
-
-	ctx.WriteKeyWord(" COMPACT")
-	if len(n.PartitionNames) != 0 {
-		ctx.WriteKeyWord(" PARTITION ")
-		for i, partition := range n.PartitionNames {
-			if i != 0 {
-				ctx.WritePlain(",")
-			}
-			ctx.WriteName(partition.O)
-		}
-	}
-	if n.ReplicaKind != CompactReplicaKindAll {
-		ctx.WriteKeyWord(" ")
-		// Note: There is only TiFlash replica available now. TiKV will be added later.
-		ctx.WriteKeyWord(string(n.ReplicaKind))
-		ctx.WriteKeyWord(" REPLICA")
-	}
-	return nil
-}
-
-// Accept implements Node Accept interface.
-func (n *CompactTableStmt) Accept(v Visitor) (Node, bool) {
-	newNode, skipChildren := v.Enter(n)
-	if skipChildren {
-		return v.Leave(newNode)
-	}
-	n = newNode.(*CompactTableStmt)
-	node, ok := n.Table.Accept(v)
-	if !ok {
-		return n, false
-	}
-	n.Table = node.(*TableName)
 	return v.Leave(n)
 }
 
@@ -556,6 +423,7 @@ type Prepared struct {
 	StmtType      string
 	Params        []ParamMarkerExpr
 	SchemaVersion int64
+	UseCache      bool
 	CachedPlan    interface{}
 	CachedNames   interface{}
 }
@@ -568,12 +436,8 @@ type ExecuteStmt struct {
 	Name       string
 	UsingVars  []ExprNode
 	BinaryArgs interface{}
-	PrepStmt   interface{} // the corresponding prepared statement
+	ExecID     uint32
 	IdxInMulti int
-
-	// FromGeneralStmt indicates whether this execute-stmt is converted from a general query.
-	// e.g. select * from t where a>2 --> execute 'select * from t where a>?' using 2
-	FromGeneralStmt bool
 }
 
 // Restore implements Node interface.
@@ -650,15 +514,6 @@ func (n *BeginStmt) Accept(v Visitor) (Node, bool) {
 	if skipChildren {
 		return v.Leave(newNode)
 	}
-
-	if n.AsOf != nil {
-		node, ok := n.AsOf.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.AsOf = node.(*AsOfClause)
-	}
-
 	n = newNode.(*BeginStmt)
 	return v.Leave(n)
 }
@@ -701,6 +556,7 @@ const (
 func (n CompletionType) Restore(ctx *format.RestoreCtx) error {
 	switch n {
 	case CompletionTypeDefault:
+		break
 	case CompletionTypeChain:
 		ctx.WriteKeyWord(" AND CHAIN")
 	case CompletionTypeRelease:
@@ -742,17 +598,11 @@ type RollbackStmt struct {
 	stmtNode
 	// CompletionType overwrites system variable `completion_type` within transaction
 	CompletionType CompletionType
-	// SavepointName is the savepoint name.
-	SavepointName string
 }
 
 // Restore implements Node interface.
 func (n *RollbackStmt) Restore(ctx *format.RestoreCtx) error {
 	ctx.WriteKeyWord("ROLLBACK")
-	if n.SavepointName != "" {
-		ctx.WritePlain(" TO ")
-		ctx.WritePlain(n.SavepointName)
-	}
 	if err := n.CompletionType.Restore(ctx); err != nil {
 		return errors.Annotate(err, "An error occurred while restore RollbackStmt.CompletionType")
 	}
@@ -800,8 +650,6 @@ const (
 	SetNames = "SetNAMES"
 	// SetCharset is the const for set charset stmt.
 	SetCharset = "SetCharset"
-	// TiDBCloudStorageURI is the const for set tidb_cloud_storage_uri stmt.
-	TiDBCloudStorageURI = "tidb_cloud_storage_uri"
 )
 
 // VariableAssignment is a variable assignment struct.
@@ -840,10 +688,7 @@ func (n *VariableAssignment) Restore(ctx *format.RestoreCtx) error {
 		ctx.WriteName(n.Name)
 		ctx.WritePlain("=")
 	}
-	if n.Name == TiDBCloudStorageURI {
-		// need to redact the url for safety when `show processlist;`
-		ctx.WritePlain(RedactURL(n.Value.(ValueExpr).GetString()))
-	} else if err := n.Value.Restore(ctx); err != nil {
+	if err := n.Value.Restore(ctx); err != nil {
 		return errors.Annotate(err, "An error occurred while restore VariableAssignment.Value")
 	}
 	if n.ExtendValue != nil {
@@ -1000,8 +845,6 @@ type KillStmt struct {
 	// So, "KILL TIDB" grammar is introduced, and it REQUIRES DIRECT client -> TiDB TOPOLOGY.
 	// TODO: The standard KILL grammar will be supported once we have global connectionID.
 	TiDBExtension bool
-
-	Expr ExprNode
 }
 
 // Restore implements Node interface.
@@ -1013,14 +856,7 @@ func (n *KillStmt) Restore(ctx *format.RestoreCtx) error {
 	if n.Query {
 		ctx.WriteKeyWord(" QUERY")
 	}
-	if n.Expr != nil {
-		ctx.WriteKeyWord(" ")
-		if err := n.Expr.Restore(ctx); err != nil {
-			return errors.Trace(err)
-		}
-	} else {
-		ctx.WritePlainf(" %d", n.ConnectionID)
-	}
+	ctx.WritePlainf(" %d", n.ConnectionID)
 	return nil
 }
 
@@ -1031,48 +867,6 @@ func (n *KillStmt) Accept(v Visitor) (Node, bool) {
 		return v.Leave(newNode)
 	}
 	n = newNode.(*KillStmt)
-	return v.Leave(n)
-}
-
-// SavepointStmt is the statement of SAVEPOINT.
-type SavepointStmt struct {
-	stmtNode
-	// Name is the savepoint name.
-	Name string
-}
-
-// Restore implements Node interface.
-func (n *SavepointStmt) Restore(ctx *format.RestoreCtx) error {
-	ctx.WriteKeyWord("SAVEPOINT ")
-	ctx.WritePlain(n.Name)
-	return nil
-}
-
-// Accept implements Node Accept interface.
-func (n *SavepointStmt) Accept(v Visitor) (Node, bool) {
-	newNode, _ := v.Enter(n)
-	n = newNode.(*SavepointStmt)
-	return v.Leave(n)
-}
-
-// ReleaseSavepointStmt is the statement of RELEASE SAVEPOINT.
-type ReleaseSavepointStmt struct {
-	stmtNode
-	// Name is the savepoint name.
-	Name string
-}
-
-// Restore implements Node interface.
-func (n *ReleaseSavepointStmt) Restore(ctx *format.RestoreCtx) error {
-	ctx.WriteKeyWord("RELEASE SAVEPOINT ")
-	ctx.WritePlain(n.Name)
-	return nil
-}
-
-// Accept implements Node Accept interface.
-func (n *ReleaseSavepointStmt) Accept(v Visitor) (Node, bool) {
-	newNode, _ := v.Enter(n)
-	n = newNode.(*ReleaseSavepointStmt)
 	return v.Leave(n)
 }
 
@@ -1114,15 +908,6 @@ func (n *SetStmt) Accept(v Visitor) (Node, bool) {
 	return v.Leave(n)
 }
 
-// SecureText implements SensitiveStatement interface.
-// need to redact the tidb_cloud_storage_url for safety when `show processlist;`
-func (n *SetStmt) SecureText() string {
-	redactedStmt := *n
-	var sb strings.Builder
-	_ = redactedStmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb))
-	return sb.String()
-}
-
 // SetConfigStmt is the statement to set cluster configs.
 type SetConfigStmt struct {
 	stmtNode
@@ -1152,33 +937,11 @@ func (n *SetConfigStmt) Accept(v Visitor) (Node, bool) {
 		return v.Leave(newNode)
 	}
 	n = newNode.(*SetConfigStmt)
-	node, ok := n.Value.Accept(v)
-	if !ok {
+	if node, ok := n.Value.Accept(v); !ok {
 		return n, false
+	} else {
+		n.Value = node.(ExprNode)
 	}
-	n.Value = node.(ExprNode)
-	return v.Leave(n)
-}
-
-// SetSessionStatesStmt is a statement to restore session states.
-type SetSessionStatesStmt struct {
-	stmtNode
-
-	SessionStates string
-}
-
-func (n *SetSessionStatesStmt) Restore(ctx *format.RestoreCtx) error {
-	ctx.WriteKeyWord("SET SESSION_STATES ")
-	ctx.WriteString(n.SessionStates)
-	return nil
-}
-
-func (n *SetSessionStatesStmt) Accept(v Visitor) (Node, bool) {
-	newNode, skipChildren := v.Enter(n)
-	if skipChildren {
-		return v.Leave(newNode)
-	}
-	n = newNode.(*SetSessionStatesStmt)
 	return v.Leave(n)
 }
 
@@ -1426,23 +1189,11 @@ func (n *UserSpec) EncodedPassword() (string, bool) {
 	opt := n.AuthOpt
 	if opt.ByAuthString {
 		switch opt.AuthPlugin {
-		case mysql.AuthCachingSha2Password, mysql.AuthTiDBSM3Password:
-			return auth.NewHashPassword(opt.AuthString, opt.AuthPlugin), true
-		case mysql.AuthSocket:
-			return "", true
+		case mysql.AuthCachingSha2Password:
+			return auth.NewSha2Password(opt.AuthString), true
 		default:
 			return auth.EncodePassword(opt.AuthString), true
 		}
-	}
-
-	// store the LDAP dn directly in the password field
-	switch opt.AuthPlugin {
-	case mysql.AuthLDAPSimple, mysql.AuthLDAPSASL:
-		// TODO: validate the HashString to be a `dn` for LDAP
-		// It seems fine to not validate here, and LDAP server will give an error when the client'll try to login this user.
-		// The percona server implementation doesn't have a validation for this HashString.
-		// However, returning an error for obvious wrong format is more friendly.
-		return opt.HashString, true
 	}
 
 	// In case we have 'IDENTIFIED WITH <plugin>' but no 'BY <password>' to set an empty password.
@@ -1456,10 +1207,6 @@ func (n *UserSpec) EncodedPassword() (string, bool) {
 		if len(opt.HashString) != mysql.SHAPWDHashLen {
 			return "", false
 		}
-	case mysql.AuthTiDBSM3Password:
-		if len(opt.HashString) != mysql.SM3PWDHashLen {
-			return "", false
-		}
 	case "", mysql.AuthNativePassword:
 		if len(opt.HashString) != (mysql.PWDHashLen+1) || !strings.HasPrefix(opt.HashString, "*") {
 			return "", false
@@ -1471,12 +1218,22 @@ func (n *UserSpec) EncodedPassword() (string, bool) {
 	return opt.HashString, true
 }
 
-type AuthTokenOrTLSOption struct {
-	Type  AuthTokenOrTLSOptionType
+const (
+	TlsNone = iota
+	Ssl
+	X509
+	Cipher
+	Issuer
+	Subject
+	SAN
+)
+
+type TLSOption struct {
+	Type  int
 	Value string
 }
 
-func (t *AuthTokenOrTLSOption) Restore(ctx *format.RestoreCtx) error {
+func (t *TLSOption) Restore(ctx *format.RestoreCtx) error {
 	switch t.Type {
 	case TlsNone:
 		ctx.WriteKeyWord("NONE")
@@ -1496,49 +1253,10 @@ func (t *AuthTokenOrTLSOption) Restore(ctx *format.RestoreCtx) error {
 	case SAN:
 		ctx.WriteKeyWord("SAN ")
 		ctx.WriteString(t.Value)
-	case TokenIssuer:
-		ctx.WriteKeyWord("TOKEN_ISSUER ")
-		ctx.WriteString(t.Value)
 	default:
-		return errors.Errorf("Unsupported AuthTokenOrTLSOption.Type %d", t.Type)
+		return errors.Errorf("Unsupported TLSOption.Type %d", t.Type)
 	}
 	return nil
-}
-
-type AuthTokenOrTLSOptionType int
-
-const (
-	TlsNone AuthTokenOrTLSOptionType = iota
-	Ssl
-	X509
-	Cipher
-	Issuer
-	Subject
-	SAN
-	TokenIssuer
-)
-
-func (t AuthTokenOrTLSOptionType) String() string {
-	switch t {
-	case TlsNone:
-		return "NONE"
-	case Ssl:
-		return "SSL"
-	case X509:
-		return "X509"
-	case Cipher:
-		return "CIPHER"
-	case Issuer:
-		return "ISSUER"
-	case Subject:
-		return "SUBJECT"
-	case SAN:
-		return "SAN"
-	case TokenIssuer:
-		return "TOKEN_ISSUER"
-	default:
-		return "UNKNOWN"
-	}
 }
 
 const (
@@ -1575,19 +1293,8 @@ const (
 	PasswordExpireDefault
 	PasswordExpireNever
 	PasswordExpireInterval
-	PasswordHistory
-	PasswordHistoryDefault
-	PasswordReuseInterval
-	PasswordReuseDefault
 	Lock
 	Unlock
-	FailedLoginAttempts
-	PasswordLockTime
-	PasswordLockTimeUnbounded
-	UserCommentType
-	UserAttributeType
-
-	UserResourceGroupName
 )
 
 type PasswordOrLockOption struct {
@@ -1611,70 +1318,23 @@ func (p *PasswordOrLockOption) Restore(ctx *format.RestoreCtx) error {
 		ctx.WriteKeyWord("ACCOUNT LOCK")
 	case Unlock:
 		ctx.WriteKeyWord("ACCOUNT UNLOCK")
-	case FailedLoginAttempts:
-		ctx.WriteKeyWord("FAILED_LOGIN_ATTEMPTS")
-		ctx.WritePlainf(" %d", p.Count)
-	case PasswordLockTime:
-		ctx.WriteKeyWord("PASSWORD_LOCK_TIME")
-		ctx.WritePlainf(" %d", p.Count)
-	case PasswordLockTimeUnbounded:
-		ctx.WriteKeyWord("PASSWORD_LOCK_TIME UNBOUNDED")
-	case PasswordHistory:
-		ctx.WriteKeyWord("PASSWORD HISTORY")
-		ctx.WritePlainf(" %d", p.Count)
-	case PasswordHistoryDefault:
-		ctx.WriteKeyWord("PASSWORD HISTORY DEFAULT")
-	case PasswordReuseInterval:
-		ctx.WriteKeyWord("PASSWORD REUSE INTERVAL")
-		ctx.WritePlainf(" %d", p.Count)
-		ctx.WriteKeyWord(" DAY")
-	case PasswordReuseDefault:
-		ctx.WriteKeyWord("PASSWORD REUSE INTERVAL DEFAULT")
 	default:
 		return errors.Errorf("Unsupported PasswordOrLockOption.Type %d", p.Type)
 	}
 	return nil
 }
 
-type CommentOrAttributeOption struct {
-	Type  int
-	Value string
-}
-
-func (c *CommentOrAttributeOption) Restore(ctx *format.RestoreCtx) error {
-	if c.Type == UserCommentType {
-		ctx.WriteKeyWord(" COMMENT ")
-		ctx.WriteString(c.Value)
-	} else if c.Type == UserAttributeType {
-		ctx.WriteKeyWord(" ATTRIBUTE ")
-		ctx.WriteString(c.Value)
-	}
-	return nil
-}
-
-type ResourceGroupNameOption struct {
-	Value string
-}
-
-func (c *ResourceGroupNameOption) Restore(ctx *format.RestoreCtx) error {
-	ctx.WriteKeyWord(" RESOURCE GROUP ")
-	ctx.WriteName(c.Value)
-	return nil
-}
-
 // CreateUserStmt creates user account.
-// See https://dev.mysql.com/doc/refman/8.0/en/create-user.html
+// See https://dev.mysql.com/doc/refman/5.7/en/create-user.html
 type CreateUserStmt struct {
 	stmtNode
 
-	IsCreateRole             bool
-	IfNotExists              bool
-	Specs                    []*UserSpec
-	AuthTokenOrTLSOptions    []*AuthTokenOrTLSOption
-	ResourceOptions          []*ResourceOption
-	PasswordOrLockOptions    []*PasswordOrLockOption
-	CommentOrAttributeOption *CommentOrAttributeOption
-	ResourceGroupNameOption  *ResourceGroupNameOption
+	IsCreateRole          bool
+	IfNotExists           bool
+	Specs                 []*UserSpec
+	TLSOptions            []*TLSOption
+	ResourceOptions       []*ResourceOption
+	PasswordOrLockOptions []*PasswordOrLockOption
 }
 
 // Restore implements Node interface.
@@ -1696,16 +1356,16 @@ func (n *CreateUserStmt) Restore(ctx *format.RestoreCtx) error {
 		}
 	}
 
-	if len(n.AuthTokenOrTLSOptions) != 0 {
+	if len(n.TLSOptions) != 0 {
 		ctx.WriteKeyWord(" REQUIRE ")
 	}
 
-	for i, option := range n.AuthTokenOrTLSOptions {
+	for i, option := range n.TLSOptions {
 		if i != 0 {
 			ctx.WriteKeyWord(" AND ")
 		}
 		if err := option.Restore(ctx); err != nil {
-			return errors.Annotatef(err, "An error occurred while restore CreateUserStmt.AuthTokenOrTLSOptions[%d]", i)
+			return errors.Annotatef(err, "An error occurred while restore CreateUserStmt.TLSOptions[%d]", i)
 		}
 	}
 
@@ -1726,19 +1386,6 @@ func (n *CreateUserStmt) Restore(ctx *format.RestoreCtx) error {
 			return errors.Annotatef(err, "An error occurred while restore CreateUserStmt.PasswordOrLockOptions[%d]", i)
 		}
 	}
-
-	if n.CommentOrAttributeOption != nil {
-		if err := n.CommentOrAttributeOption.Restore(ctx); err != nil {
-			return errors.Annotatef(err, "An error occurred while restore CreateUserStmt.CommentOrAttributeOption")
-		}
-	}
-
-	if n.ResourceGroupNameOption != nil {
-		if err := n.ResourceGroupNameOption.Restore(ctx); err != nil {
-			return errors.Annotatef(err, "An error occurred while restore CreateUserStmt.ResourceGroupNameOption")
-		}
-	}
-
 	return nil
 }
 
@@ -1764,18 +1411,16 @@ func (n *CreateUserStmt) SecureText() string {
 }
 
 // AlterUserStmt modifies user account.
-// See https://dev.mysql.com/doc/refman/8.0/en/alter-user.html
+// See https://dev.mysql.com/doc/refman/5.7/en/alter-user.html
 type AlterUserStmt struct {
 	stmtNode
 
-	IfExists                 bool
-	CurrentAuth              *AuthOption
-	Specs                    []*UserSpec
-	AuthTokenOrTLSOptions    []*AuthTokenOrTLSOption
-	ResourceOptions          []*ResourceOption
-	PasswordOrLockOptions    []*PasswordOrLockOption
-	CommentOrAttributeOption *CommentOrAttributeOption
-	ResourceGroupNameOption  *ResourceGroupNameOption
+	IfExists              bool
+	CurrentAuth           *AuthOption
+	Specs                 []*UserSpec
+	TLSOptions            []*TLSOption
+	ResourceOptions       []*ResourceOption
+	PasswordOrLockOptions []*PasswordOrLockOption
 }
 
 // Restore implements Node interface.
@@ -1800,16 +1445,16 @@ func (n *AlterUserStmt) Restore(ctx *format.RestoreCtx) error {
 		}
 	}
 
-	if len(n.AuthTokenOrTLSOptions) != 0 {
+	if len(n.TLSOptions) != 0 {
 		ctx.WriteKeyWord(" REQUIRE ")
 	}
 
-	for i, option := range n.AuthTokenOrTLSOptions {
+	for i, option := range n.TLSOptions {
 		if i != 0 {
 			ctx.WriteKeyWord(" AND ")
 		}
 		if err := option.Restore(ctx); err != nil {
-			return errors.Annotatef(err, "An error occurred while restore AlterUserStmt.AuthTokenOrTLSOptions[%d]", i)
+			return errors.Annotatef(err, "An error occurred while restore AlterUserStmt.TLSOptions[%d]", i)
 		}
 	}
 
@@ -1830,19 +1475,6 @@ func (n *AlterUserStmt) Restore(ctx *format.RestoreCtx) error {
 			return errors.Annotatef(err, "An error occurred while restore AlterUserStmt.PasswordOrLockOptions[%d]", i)
 		}
 	}
-
-	if n.CommentOrAttributeOption != nil {
-		if err := n.CommentOrAttributeOption.Restore(ctx); err != nil {
-			return errors.Annotatef(err, "An error occurred while restore AlterUserStmt.CommentOrAttributeOption")
-		}
-	}
-
-	if n.ResourceGroupNameOption != nil {
-		if err := n.ResourceGroupNameOption.Restore(ctx); err != nil {
-			return errors.Annotatef(err, "An error occurred while restore AlterUserStmt.ResourceGroupNameOption")
-		}
-	}
-
 	return nil
 }
 
@@ -1898,34 +1530,6 @@ func (n *AlterInstanceStmt) Accept(v Visitor) (Node, bool) {
 	return v.Leave(n)
 }
 
-// AlterRangeStmt modifies range configuration.
-type AlterRangeStmt struct {
-	stmtNode
-	RangeName       model.CIStr
-	PlacementOption *PlacementOption
-}
-
-// Restore implements Node interface.
-func (n *AlterRangeStmt) Restore(ctx *format.RestoreCtx) error {
-	ctx.WriteKeyWord("ALTER RANGE ")
-	ctx.WriteName(n.RangeName.O)
-	ctx.WritePlain(" ")
-	if err := n.PlacementOption.Restore(ctx); err != nil {
-		return errors.Annotate(err, "An error occurred while restore AlterRangeStmt.PlacementOption")
-	}
-	return nil
-}
-
-// Accept implements Node Accept interface.
-func (n *AlterRangeStmt) Accept(v Visitor) (Node, bool) {
-	newNode, skipChildren := v.Enter(n)
-	if skipChildren {
-		return v.Leave(newNode)
-	}
-	n = newNode.(*AlterRangeStmt)
-	return v.Leave(n)
-}
-
 // DropUserStmt creates user account.
 // See http://dev.mysql.com/doc/refman/5.7/en/drop-user.html
 type DropUserStmt struct {
@@ -1974,7 +1578,6 @@ type CreateBindingStmt struct {
 	GlobalScope bool
 	OriginNode  StmtNode
 	HintedNode  StmtNode
-	PlanDigest  string
 }
 
 func (n *CreateBindingStmt) Restore(ctx *format.RestoreCtx) error {
@@ -1984,18 +1587,13 @@ func (n *CreateBindingStmt) Restore(ctx *format.RestoreCtx) error {
 	} else {
 		ctx.WriteKeyWord("SESSION ")
 	}
-	if n.OriginNode == nil {
-		ctx.WriteKeyWord("BINDING FROM HISTORY USING PLAN DIGEST ")
-		ctx.WriteString(n.PlanDigest)
-	} else {
-		ctx.WriteKeyWord("BINDING FOR ")
-		if err := n.OriginNode.Restore(ctx); err != nil {
-			return errors.Trace(err)
-		}
-		ctx.WriteKeyWord(" USING ")
-		if err := n.HintedNode.Restore(ctx); err != nil {
-			return errors.Trace(err)
-		}
+	ctx.WriteKeyWord("BINDING FOR ")
+	if err := n.OriginNode.Restore(ctx); err != nil {
+		return errors.Trace(err)
+	}
+	ctx.WriteKeyWord(" USING ")
+	if err := n.HintedNode.Restore(ctx); err != nil {
+		return errors.Trace(err)
 	}
 	return nil
 }
@@ -2006,18 +1604,16 @@ func (n *CreateBindingStmt) Accept(v Visitor) (Node, bool) {
 		return v.Leave(newNode)
 	}
 	n = newNode.(*CreateBindingStmt)
-	if n.OriginNode != nil {
-		origNode, ok := n.OriginNode.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.OriginNode = origNode.(StmtNode)
-		hintedNode, ok := n.HintedNode.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.HintedNode = hintedNode.(StmtNode)
+	origNode, ok := n.OriginNode.Accept(v)
+	if !ok {
+		return n, false
 	}
+	n.OriginNode = origNode.(StmtNode)
+	hintedNode, ok := n.HintedNode.Accept(v)
+	if !ok {
+		return n, false
+	}
+	n.HintedNode = hintedNode.(StmtNode)
 	return v.Leave(n)
 }
 
@@ -2028,7 +1624,6 @@ type DropBindingStmt struct {
 	GlobalScope bool
 	OriginNode  StmtNode
 	HintedNode  StmtNode
-	SQLDigest   string
 }
 
 func (n *DropBindingStmt) Restore(ctx *format.RestoreCtx) error {
@@ -2039,18 +1634,13 @@ func (n *DropBindingStmt) Restore(ctx *format.RestoreCtx) error {
 		ctx.WriteKeyWord("SESSION ")
 	}
 	ctx.WriteKeyWord("BINDING FOR ")
-	if n.OriginNode == nil {
-		ctx.WriteKeyWord("SQL DIGEST ")
-		ctx.WriteString(n.SQLDigest)
-	} else {
-		if err := n.OriginNode.Restore(ctx); err != nil {
+	if err := n.OriginNode.Restore(ctx); err != nil {
+		return errors.Trace(err)
+	}
+	if n.HintedNode != nil {
+		ctx.WriteKeyWord(" USING ")
+		if err := n.HintedNode.Restore(ctx); err != nil {
 			return errors.Trace(err)
-		}
-		if n.HintedNode != nil {
-			ctx.WriteKeyWord(" USING ")
-			if err := n.HintedNode.Restore(ctx); err != nil {
-				return errors.Trace(err)
-			}
 		}
 	}
 	return nil
@@ -2062,90 +1652,17 @@ func (n *DropBindingStmt) Accept(v Visitor) (Node, bool) {
 		return v.Leave(newNode)
 	}
 	n = newNode.(*DropBindingStmt)
-	if n.OriginNode != nil {
-		//  OriginNode is nil means we build drop binding by sql digest
-		origNode, ok := n.OriginNode.Accept(v)
+	origNode, ok := n.OriginNode.Accept(v)
+	if !ok {
+		return n, false
+	}
+	n.OriginNode = origNode.(StmtNode)
+	if n.HintedNode != nil {
+		hintedNode, ok := n.HintedNode.Accept(v)
 		if !ok {
 			return n, false
 		}
-		n.OriginNode = origNode.(StmtNode)
-		if n.HintedNode != nil {
-			hintedNode, ok := n.HintedNode.Accept(v)
-			if !ok {
-				return n, false
-			}
-			n.HintedNode = hintedNode.(StmtNode)
-		}
-	}
-	return v.Leave(n)
-}
-
-// BindingStatusType defines the status type for the binding
-type BindingStatusType int8
-
-// Binding status types.
-const (
-	BindingStatusTypeEnabled BindingStatusType = iota
-	BindingStatusTypeDisabled
-)
-
-// SetBindingStmt sets sql binding status.
-type SetBindingStmt struct {
-	stmtNode
-
-	BindingStatusType BindingStatusType
-	OriginNode        StmtNode
-	HintedNode        StmtNode
-	SQLDigest         string
-}
-
-func (n *SetBindingStmt) Restore(ctx *format.RestoreCtx) error {
-	ctx.WriteKeyWord("SET ")
-	ctx.WriteKeyWord("BINDING ")
-	switch n.BindingStatusType {
-	case BindingStatusTypeEnabled:
-		ctx.WriteKeyWord("ENABLED ")
-	case BindingStatusTypeDisabled:
-		ctx.WriteKeyWord("DISABLED ")
-	}
-	ctx.WriteKeyWord("FOR ")
-	if n.OriginNode == nil {
-		ctx.WriteKeyWord("SQL DIGEST ")
-		ctx.WriteString(n.SQLDigest)
-	} else {
-		if err := n.OriginNode.Restore(ctx); err != nil {
-			return errors.Trace(err)
-		}
-		if n.HintedNode != nil {
-			ctx.WriteKeyWord(" USING ")
-			if err := n.HintedNode.Restore(ctx); err != nil {
-				return errors.Trace(err)
-			}
-		}
-	}
-	return nil
-}
-
-func (n *SetBindingStmt) Accept(v Visitor) (Node, bool) {
-	newNode, skipChildren := v.Enter(n)
-	if skipChildren {
-		return v.Leave(newNode)
-	}
-	n = newNode.(*SetBindingStmt)
-	if n.OriginNode != nil {
-		// OriginNode is nil means we set binding stmt by sql digest
-		origNode, ok := n.OriginNode.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.OriginNode = origNode.(StmtNode)
-		if n.HintedNode != nil {
-			hintedNode, ok := n.HintedNode.Accept(v)
-			if !ok {
-				return n, false
-			}
-			n.HintedNode = hintedNode.(StmtNode)
-		}
+		n.HintedNode = hintedNode.(StmtNode)
 	}
 	return v.Leave(n)
 }
@@ -2305,18 +1822,15 @@ type AdminStmtType int
 
 // Admin statement types.
 const (
-	AdminShowDDL AdminStmtType = iota + 1
+	AdminShowDDL = iota + 1
 	AdminCheckTable
 	AdminShowDDLJobs
 	AdminCancelDDLJobs
-	AdminPauseDDLJobs
-	AdminResumeDDLJobs
 	AdminCheckIndex
 	AdminRecoverIndex
 	AdminCleanupIndex
 	AdminCheckIndexRange
 	AdminShowDDLJobQueries
-	AdminShowDDLJobQueriesWithRange
 	AdminChecksumTable
 	AdminShowSlow
 	AdminShowNextRowID
@@ -2328,11 +1842,9 @@ const (
 	AdminCaptureBindings
 	AdminEvolveBindings
 	AdminReloadBindings
+	AdminShowTelemetry
+	AdminResetTelemetryID
 	AdminReloadStatistics
-	AdminFlushPlanCache
-	AdminSetBDRRole
-	AdminShowBDRRole
-	AdminUnsetBDRRole
 )
 
 // HandleRange represents a range where handle value >= Begin and < End.
@@ -2340,58 +1852,6 @@ type HandleRange struct {
 	Begin int64
 	End   int64
 }
-
-// BDRRole represents the role of the cluster in BDR mode.
-type BDRRole string
-
-const (
-	BDRRolePrimary   BDRRole = "primary"
-	BDRRoleSecondary BDRRole = "secondary"
-	BDRRoleNone      BDRRole = ""
-)
-
-// DeniedByBDR checks whether the DDL is denied by BDR.
-func DeniedByBDR(role BDRRole, action model.ActionType, job *model.Job) (denied bool) {
-	ddlType, ok := model.ActionBDRMap[action]
-	switch role {
-	case BDRRolePrimary:
-		if !ok {
-			return true
-		}
-
-		// Can't add unique index on primary role.
-		if job != nil && (action == model.ActionAddIndex || action == model.ActionAddPrimaryKey) &&
-			len(job.Args) >= 1 && job.Args[0].(bool) {
-			// job.Args[0] is unique when job.Type is ActionAddIndex or ActionAddPrimaryKey.
-			return true
-		}
-
-		if ddlType == model.SafeDDL || ddlType == model.UnmanagementDDL {
-			return false
-		}
-	case BDRRoleSecondary:
-		if !ok {
-			return true
-		}
-		if ddlType == model.UnmanagementDDL {
-			return false
-		}
-	default:
-		// if user do not set bdr role, we will not deny any ddl as `none`
-		return false
-	}
-
-	return true
-}
-
-type StatementScope int
-
-const (
-	StatementScopeNone StatementScope = iota
-	StatementScopeSession
-	StatementScopeInstance
-	StatementScopeGlobal
-)
 
 // ShowSlowType defines the type for SlowSlow statement.
 type ShowSlowType int
@@ -2449,12 +1909,6 @@ func (n *ShowSlow) Restore(ctx *format.RestoreCtx) error {
 	return nil
 }
 
-// LimitSimple is the struct for Admin statement limit option.
-type LimitSimple struct {
-	Count  uint64
-	Offset uint64
-}
-
 // AdminStmt is the struct for Admin statement.
 type AdminStmt struct {
 	stmtNode
@@ -2465,13 +1919,10 @@ type AdminStmt struct {
 	JobIDs    []int64
 	JobNumber int64
 
-	HandleRanges   []HandleRange
-	ShowSlow       *ShowSlow
-	Plugins        []string
-	Where          ExprNode
-	StatementScope StatementScope
-	LimitSimple    LimitSimple
-	BDRRole        BDRRole
+	HandleRanges []HandleRange
+	ShowSlow     *ShowSlow
+	Plugins      []string
+	Where        ExprNode
 }
 
 // Restore implements Node interface.
@@ -2563,18 +2014,9 @@ func (n *AdminStmt) Restore(ctx *format.RestoreCtx) error {
 	case AdminCancelDDLJobs:
 		ctx.WriteKeyWord("CANCEL DDL JOBS ")
 		restoreJobIDs()
-	case AdminPauseDDLJobs:
-		ctx.WriteKeyWord("PAUSE DDL JOBS ")
-		restoreJobIDs()
-	case AdminResumeDDLJobs:
-		ctx.WriteKeyWord("RESUME DDL JOBS ")
-		restoreJobIDs()
 	case AdminShowDDLJobQueries:
 		ctx.WriteKeyWord("SHOW DDL JOB QUERIES ")
 		restoreJobIDs()
-	case AdminShowDDLJobQueriesWithRange:
-		ctx.WriteKeyWord("SHOW DDL JOB QUERIES LIMIT ")
-		ctx.WritePlainf("%d, %d", n.LimitSimple.Offset, n.LimitSimple.Count)
 	case AdminShowSlow:
 		ctx.WriteKeyWord("SHOW SLOW ")
 		if err := n.ShowSlow.Restore(ctx); err != nil {
@@ -2612,29 +2054,12 @@ func (n *AdminStmt) Restore(ctx *format.RestoreCtx) error {
 		ctx.WriteKeyWord("EVOLVE BINDINGS")
 	case AdminReloadBindings:
 		ctx.WriteKeyWord("RELOAD BINDINGS")
+	case AdminShowTelemetry:
+		ctx.WriteKeyWord("SHOW TELEMETRY")
+	case AdminResetTelemetryID:
+		ctx.WriteKeyWord("RESET TELEMETRY_ID")
 	case AdminReloadStatistics:
 		ctx.WriteKeyWord("RELOAD STATS_EXTENDED")
-	case AdminFlushPlanCache:
-		if n.StatementScope == StatementScopeSession {
-			ctx.WriteKeyWord("FLUSH SESSION PLAN_CACHE")
-		} else if n.StatementScope == StatementScopeInstance {
-			ctx.WriteKeyWord("FLUSH INSTANCE PLAN_CACHE")
-		} else if n.StatementScope == StatementScopeGlobal {
-			ctx.WriteKeyWord("FLUSH GLOBAL PLAN_CACHE")
-		}
-	case AdminSetBDRRole:
-		switch n.BDRRole {
-		case BDRRolePrimary:
-			ctx.WriteKeyWord("SET BDR ROLE PRIMARY")
-		case BDRRoleSecondary:
-			ctx.WriteKeyWord("SET BDR ROLE SECONDARY")
-		default:
-			return errors.New("Unsupported BDR role")
-		}
-	case AdminShowBDRRole:
-		ctx.WriteKeyWord("SHOW BDR ROLE")
-	case AdminUnsetBDRRole:
-		ctx.WriteKeyWord("UNSET BDR ROLE")
 	default:
 		return errors.New("Unsupported AdminStmt type")
 	}
@@ -2714,10 +2139,11 @@ func (n *PrivElem) Restore(ctx *format.RestoreCtx) error {
 		ctx.WriteKeyWord(n.Name)
 	} else {
 		str, ok := mysql.Priv2Str[n.Priv]
-		if !ok {
+		if ok {
+			ctx.WriteKeyWord(str)
+		} else {
 			return errors.New("Undefined privilege type")
 		}
-		ctx.WriteKeyWord(str)
 	}
 	if n.Cols != nil {
 		ctx.WritePlain(" (")
@@ -2930,12 +2356,12 @@ func (n *RevokeRoleStmt) Accept(v Visitor) (Node, bool) {
 type GrantStmt struct {
 	stmtNode
 
-	Privs                 []*PrivElem
-	ObjectType            ObjectTypeType
-	Level                 *GrantLevel
-	Users                 []*UserSpec
-	AuthTokenOrTLSOptions []*AuthTokenOrTLSOption
-	WithGrant             bool
+	Privs      []*PrivElem
+	ObjectType ObjectTypeType
+	Level      *GrantLevel
+	Users      []*UserSpec
+	TLSOptions []*TLSOption
+	WithGrant  bool
 }
 
 // Restore implements Node interface.
@@ -2970,16 +2396,16 @@ func (n *GrantStmt) Restore(ctx *format.RestoreCtx) error {
 			return errors.Annotatef(err, "An error occurred while restore GrantStmt.Users[%d]", i)
 		}
 	}
-	if n.AuthTokenOrTLSOptions != nil {
-		if len(n.AuthTokenOrTLSOptions) != 0 {
+	if n.TLSOptions != nil {
+		if len(n.TLSOptions) != 0 {
 			ctx.WriteKeyWord(" REQUIRE ")
 		}
-		for i, option := range n.AuthTokenOrTLSOptions {
+		for i, option := range n.TLSOptions {
 			if i != 0 {
 				ctx.WriteKeyWord(" AND ")
 			}
 			if err := option.Restore(ctx); err != nil {
-				return errors.Annotatef(err, "An error occurred while restore GrantStmt.AuthTokenOrTLSOptions[%d]", i)
+				return errors.Annotatef(err, "An error occurred while restore GrantStmt.TLSOptions[%d]", i)
 			}
 		}
 	}
@@ -3254,38 +2680,22 @@ type BRIEOptionType uint16
 
 const (
 	BRIEKindBackup BRIEKind = iota
-	BRIEKindCancelJob
-	BRIEKindStreamStart
-	BRIEKindStreamMetaData
-	BRIEKindStreamStatus
-	BRIEKindStreamPause
-	BRIEKindStreamResume
-	BRIEKindStreamStop
-	BRIEKindStreamPurge
 	BRIEKindRestore
-	BRIEKindRestorePIT
-	BRIEKindShowJob
-	BRIEKindShowQuery
-	BRIEKindShowBackupMeta
+
 	// common BRIE options
 	BRIEOptionRateLimit BRIEOptionType = iota + 1
 	BRIEOptionConcurrency
 	BRIEOptionChecksum
 	BRIEOptionSendCreds
 	BRIEOptionCheckpoint
-	BRIEOptionStartTS
-	BRIEOptionUntilTS
 	// backup options
 	BRIEOptionBackupTimeAgo
 	BRIEOptionBackupTS
 	BRIEOptionBackupTSO
 	BRIEOptionLastBackupTS
 	BRIEOptionLastBackupTSO
-	BRIEOptionGCTTL
 	// restore options
 	BRIEOptionOnline
-	BRIEOptionFullBackupStorage
-	BRIEOptionRestoredTS
 	// import options
 	BRIEOptionAnalyze
 	BRIEOptionBackend
@@ -3320,30 +2730,6 @@ func (kind BRIEKind) String() string {
 		return "BACKUP"
 	case BRIEKindRestore:
 		return "RESTORE"
-	case BRIEKindStreamStart:
-		return "BACKUP LOGS"
-	case BRIEKindStreamStop:
-		return "STOP BACKUP LOGS"
-	case BRIEKindStreamPause:
-		return "PAUSE BACKUP LOGS"
-	case BRIEKindStreamResume:
-		return "RESUME BACKUP LOGS"
-	case BRIEKindStreamStatus:
-		return "SHOW BACKUP LOGS STATUS"
-	case BRIEKindStreamMetaData:
-		return "SHOW BACKUP LOGS METADATA"
-	case BRIEKindStreamPurge:
-		return "PURGE BACKUP LOGS"
-	case BRIEKindRestorePIT:
-		return "RESTORE POINT"
-	case BRIEKindShowJob:
-		return "SHOW BR JOB"
-	case BRIEKindShowQuery:
-		return "SHOW BR JOB QUERY"
-	case BRIEKindCancelJob:
-		return "CANCEL BR JOB"
-	case BRIEKindShowBackupMeta:
-		return "SHOW BACKUP METADATA"
 	default:
 		return ""
 	}
@@ -3395,16 +2781,6 @@ func (kind BRIEOptionType) String() string {
 		return "CSV_SEPARATOR"
 	case BRIEOptionCSVTrimLastSeparators:
 		return "CSV_TRIM_LAST_SEPARATORS"
-	case BRIEOptionFullBackupStorage:
-		return "FULL_BACKUP_STORAGE"
-	case BRIEOptionRestoredTS:
-		return "RESTORED_TS"
-	case BRIEOptionStartTS:
-		return "START_TS"
-	case BRIEOptionUntilTS:
-		return "UNTIL_TS"
-	case BRIEOptionGCTTL:
-		return "GC_TTL"
 	default:
 		return ""
 	}
@@ -3433,7 +2809,7 @@ func (opt *BRIEOption) Restore(ctx *format.RestoreCtx) error {
 	ctx.WriteKeyWord(opt.Tp.String())
 	ctx.WritePlain(" = ")
 	switch opt.Tp {
-	case BRIEOptionBackupTS, BRIEOptionLastBackupTS, BRIEOptionBackend, BRIEOptionOnDuplicate, BRIEOptionTiKVImporter, BRIEOptionCSVDelimiter, BRIEOptionCSVNull, BRIEOptionCSVSeparator, BRIEOptionFullBackupStorage, BRIEOptionRestoredTS, BRIEOptionStartTS, BRIEOptionUntilTS, BRIEOptionGCTTL:
+	case BRIEOptionBackupTS, BRIEOptionLastBackupTS, BRIEOptionBackend, BRIEOptionOnDuplicate, BRIEOptionTiKVImporter, BRIEOptionCSVDelimiter, BRIEOptionCSVNull, BRIEOptionCSVSeparator:
 		ctx.WriteString(opt.StrValue)
 	case BRIEOptionBackupTimeAgo:
 		ctx.WritePlainf("%d ", opt.UintValue/1000)
@@ -3466,7 +2842,6 @@ type BRIEStmt struct {
 	Schemas []string
 	Tables  []*TableName
 	Storage string
-	JobID   int64
 	Options []*BRIEOption
 }
 
@@ -3489,48 +2864,37 @@ func (n *BRIEStmt) Accept(v Visitor) (Node, bool) {
 func (n *BRIEStmt) Restore(ctx *format.RestoreCtx) error {
 	ctx.WriteKeyWord(n.Kind.String())
 
-	switch n.Kind {
-	case BRIEKindRestore, BRIEKindBackup:
-		switch {
-		case len(n.Tables) != 0:
-			ctx.WriteKeyWord(" TABLE ")
-			for index, table := range n.Tables {
-				if index != 0 {
-					ctx.WritePlain(", ")
-				}
-				if err := table.Restore(ctx); err != nil {
-					return errors.Annotatef(err, "An error occurred while restore BRIEStmt.Tables[%d]", index)
-				}
+	switch {
+	case len(n.Tables) != 0:
+		ctx.WriteKeyWord(" TABLE ")
+		for index, table := range n.Tables {
+			if index != 0 {
+				ctx.WritePlain(", ")
 			}
-		case len(n.Schemas) != 0:
-			ctx.WriteKeyWord(" DATABASE ")
-			for index, schema := range n.Schemas {
-				if index != 0 {
-					ctx.WritePlain(", ")
-				}
-				ctx.WriteName(schema)
+			if err := table.Restore(ctx); err != nil {
+				return errors.Annotatef(err, "An error occurred while restore BRIEStmt.Tables[%d]", index)
 			}
-		default:
-			ctx.WriteKeyWord(" DATABASE")
-			ctx.WritePlain(" *")
 		}
-
-		if n.Kind == BRIEKindBackup {
-			ctx.WriteKeyWord(" TO ")
-			ctx.WriteString(n.Storage)
-		} else {
-			ctx.WriteKeyWord(" FROM ")
-			ctx.WriteString(n.Storage)
+	case len(n.Schemas) != 0:
+		ctx.WriteKeyWord(" DATABASE ")
+		for index, schema := range n.Schemas {
+			if index != 0 {
+				ctx.WritePlain(", ")
+			}
+			ctx.WriteName(schema)
 		}
-	case BRIEKindCancelJob, BRIEKindShowJob, BRIEKindShowQuery:
-		ctx.WritePlainf(" %d", n.JobID)
-	case BRIEKindStreamStart:
-		ctx.WriteKeyWord(" TO ")
-		ctx.WriteString(n.Storage)
-	case BRIEKindRestorePIT, BRIEKindStreamMetaData, BRIEKindShowBackupMeta, BRIEKindStreamPurge:
-		ctx.WriteKeyWord(" FROM ")
-		ctx.WriteString(n.Storage)
+	default:
+		ctx.WriteKeyWord(" DATABASE")
+		ctx.WritePlain(" *")
 	}
+
+	switch n.Kind {
+	case BRIEKindBackup:
+		ctx.WriteKeyWord(" TO ")
+	case BRIEKindRestore:
+		ctx.WriteKeyWord(" FROM ")
+	}
+	ctx.WriteString(n.Storage)
 
 	for _, opt := range n.Options {
 		ctx.WritePlain(" ")
@@ -3542,41 +2906,30 @@ func (n *BRIEStmt) Restore(ctx *format.RestoreCtx) error {
 	return nil
 }
 
-// RedactURL redacts the secret tokens in the URL. only S3 url need redaction for now.
-// if the url is not a valid url, return the original string.
-func RedactURL(str string) string {
-	// FIXME: this solution is not scalable, and duplicates some logic from BR.
-	u, err := url.Parse(str)
-	if err != nil {
-		return str
-	}
-	scheme := u.Scheme
-	failpoint.Inject("forceRedactURL", func() {
-		scheme = "s3"
-	})
-	switch strings.ToLower(scheme) {
-	case "s3", "ks3":
-		values := u.Query()
-		for k := range values {
-			// see below on why we normalize key
-			// https://github.com/pingcap/tidb/blob/a7c0d95f16ea2582bb569278c3f829403e6c3a7e/br/pkg/storage/parse.go#L163
-			normalizedKey := strings.ToLower(strings.ReplaceAll(k, "_", "-"))
-			if normalizedKey == "access-key" || normalizedKey == "secret-access-key" || normalizedKey == "session-token" {
-				values[k] = []string{"xxxxxx"}
-			}
-		}
-		u.RawQuery = values.Encode()
-	}
-	return u.String()
-}
-
 // SecureText implements SensitiveStmtNode
 func (n *BRIEStmt) SecureText() string {
+	// FIXME: this solution is not scalable, and duplicates some logic from BR.
+	redactedStorage := n.Storage
+	u, err := url.Parse(n.Storage)
+	if err == nil {
+		if u.Scheme == "s3" {
+			query := u.Query()
+			for key := range query {
+				switch strings.ToLower(strings.ReplaceAll(key, "_", "-")) {
+				case "access-key", "secret-access-key":
+					query[key] = []string{"xxxxxx"}
+				}
+			}
+			u.RawQuery = query.Encode()
+			redactedStorage = u.String()
+		}
+	}
+
 	redactedStmt := &BRIEStmt{
 		Kind:    n.Kind,
 		Schemas: n.Schemas,
 		Tables:  n.Tables,
-		Storage: RedactURL(n.Storage),
+		Storage: redactedStorage,
 		Options: n.Options,
 	}
 
@@ -3585,32 +2938,278 @@ func (n *BRIEStmt) SecureText() string {
 	return sb.String()
 }
 
-type ImportIntoActionTp string
-
-const (
-	ImportIntoCancel ImportIntoActionTp = "cancel"
-)
-
-// ImportIntoActionStmt represent CANCEL IMPORT INTO JOB statement.
-// will support pause/resume/drop later.
-type ImportIntoActionStmt struct {
+type PurgeImportStmt struct {
 	stmtNode
 
-	Tp    ImportIntoActionTp
-	JobID int64
+	TaskID uint64
 }
 
-func (n *ImportIntoActionStmt) Accept(v Visitor) (Node, bool) {
+func (n *PurgeImportStmt) Accept(v Visitor) (Node, bool) {
 	newNode, _ := v.Enter(n)
-	return v.Leave(newNode)
+	n = newNode.(*PurgeImportStmt)
+	return v.Leave(n)
 }
 
-func (n *ImportIntoActionStmt) Restore(ctx *format.RestoreCtx) error {
-	if n.Tp != ImportIntoCancel {
-		return errors.Errorf("invalid IMPORT INTO action type: %s", n.Tp)
+func (n *PurgeImportStmt) Restore(ctx *format.RestoreCtx) error {
+	ctx.WritePlainf("PURGE IMPORT %d", n.TaskID)
+	return nil
+}
+
+// ErrorHandlingOption is used in async IMPORT related stmt
+type ErrorHandlingOption uint64
+
+const (
+	ErrorHandleError ErrorHandlingOption = iota
+	ErrorHandleReplace
+	ErrorHandleSkipAll
+	ErrorHandleSkipConstraint
+	ErrorHandleSkipDuplicate
+	ErrorHandleSkipStrict
+)
+
+func (o ErrorHandlingOption) String() string {
+	switch o {
+	case ErrorHandleError:
+		return ""
+	case ErrorHandleReplace:
+		return "REPLACE"
+	case ErrorHandleSkipAll:
+		return "SKIP ALL"
+	case ErrorHandleSkipConstraint:
+		return "SKIP CONSTRAINT"
+	case ErrorHandleSkipDuplicate:
+		return "SKIP DUPLICATE"
+	case ErrorHandleSkipStrict:
+		return "SKIP STRICT"
+	default:
+		return ""
 	}
-	ctx.WriteKeyWord("CANCEL IMPORT JOB ")
-	ctx.WritePlainf("%d", n.JobID)
+}
+
+type CreateImportStmt struct {
+	stmtNode
+
+	IfNotExists   bool
+	Name          string
+	Storage       string
+	ErrorHandling ErrorHandlingOption
+	Options       []*BRIEOption
+}
+
+func (n *CreateImportStmt) Accept(v Visitor) (Node, bool) {
+	newNode, _ := v.Enter(n)
+	n = newNode.(*CreateImportStmt)
+	return v.Leave(n)
+}
+
+func (n *CreateImportStmt) Restore(ctx *format.RestoreCtx) error {
+	ctx.WriteKeyWord("CREATE IMPORT ")
+	if n.IfNotExists {
+		ctx.WriteKeyWord("IF NOT EXISTS ")
+	}
+	ctx.WriteName(n.Name)
+	ctx.WriteKeyWord(" FROM ")
+	ctx.WriteString(n.Storage)
+	if n.ErrorHandling != ErrorHandleError {
+		ctx.WritePlain(" ")
+		ctx.WriteKeyWord(n.ErrorHandling.String())
+	}
+	for _, opt := range n.Options {
+		ctx.WritePlain(" ")
+		if err := opt.Restore(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SecureText implements SensitiveStmtNode
+func (n *CreateImportStmt) SecureText() string {
+	// FIXME: this solution is not scalable, and duplicates some logic from BR.
+	redactedStorage := n.Storage
+	u, err := url.Parse(n.Storage)
+	if err == nil {
+		if u.Scheme == "s3" {
+			query := u.Query()
+			for key := range query {
+				switch strings.ToLower(strings.ReplaceAll(key, "_", "-")) {
+				case "access-key", "secret-access-key":
+					query[key] = []string{"xxxxxx"}
+				}
+			}
+			u.RawQuery = query.Encode()
+			redactedStorage = u.String()
+		}
+	}
+
+	redactedStmt := &CreateImportStmt{
+		IfNotExists:   n.IfNotExists,
+		Name:          n.Name,
+		Storage:       redactedStorage,
+		ErrorHandling: n.ErrorHandling,
+		Options:       n.Options,
+	}
+
+	var sb strings.Builder
+	_ = redactedStmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb))
+	return sb.String()
+}
+
+type StopImportStmt struct {
+	stmtNode
+
+	IfRunning bool
+	Name      string
+}
+
+func (n *StopImportStmt) Accept(v Visitor) (Node, bool) {
+	newNode, _ := v.Enter(n)
+	n = newNode.(*StopImportStmt)
+	return v.Leave(n)
+}
+
+func (n *StopImportStmt) Restore(ctx *format.RestoreCtx) error {
+	ctx.WriteKeyWord("STOP IMPORT ")
+	if n.IfRunning {
+		ctx.WriteKeyWord("IF RUNNING ")
+	}
+	ctx.WriteName(n.Name)
+	return nil
+}
+
+type ResumeImportStmt struct {
+	stmtNode
+
+	IfNotRunning bool
+	Name         string
+}
+
+func (n *ResumeImportStmt) Accept(v Visitor) (Node, bool) {
+	newNode, _ := v.Enter(n)
+	n = newNode.(*ResumeImportStmt)
+	return v.Leave(n)
+}
+
+func (n *ResumeImportStmt) Restore(ctx *format.RestoreCtx) error {
+	ctx.WriteKeyWord("RESUME IMPORT ")
+	if n.IfNotRunning {
+		ctx.WriteKeyWord("IF NOT RUNNING ")
+	}
+	ctx.WriteName(n.Name)
+	return nil
+}
+
+type ImportTruncate struct {
+	IsErrorsOnly bool
+	TableNames   []*TableName
+}
+
+type AlterImportStmt struct {
+	stmtNode
+
+	Name          string
+	ErrorHandling ErrorHandlingOption
+	Options       []*BRIEOption
+	Truncate      *ImportTruncate
+}
+
+func (n *AlterImportStmt) Accept(v Visitor) (Node, bool) {
+	newNode, _ := v.Enter(n)
+	n = newNode.(*AlterImportStmt)
+	return v.Leave(n)
+}
+
+func (n *AlterImportStmt) Restore(ctx *format.RestoreCtx) error {
+	ctx.WriteKeyWord("ALTER IMPORT ")
+	ctx.WriteName(n.Name)
+	if n.ErrorHandling != ErrorHandleError {
+		ctx.WritePlain(" ")
+		ctx.WriteKeyWord(n.ErrorHandling.String())
+	}
+	for _, opt := range n.Options {
+		ctx.WritePlain(" ")
+		if err := opt.Restore(ctx); err != nil {
+			return err
+		}
+	}
+	if n.Truncate != nil {
+		if n.Truncate.IsErrorsOnly {
+			ctx.WriteKeyWord(" TRUNCATE ERRORS")
+		} else {
+			ctx.WriteKeyWord(" TRUNCATE ALL")
+		}
+		if len(n.Truncate.TableNames) != 0 {
+			ctx.WriteKeyWord(" TABLE")
+		}
+		for i := range n.Truncate.TableNames {
+			if i == 0 {
+				ctx.WritePlain(" ")
+			} else {
+				ctx.WritePlain(", ")
+			}
+			if err := n.Truncate.TableNames[i].Restore(ctx); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+type DropImportStmt struct {
+	stmtNode
+
+	IfExists bool
+	Name     string
+}
+
+func (n *DropImportStmt) Accept(v Visitor) (Node, bool) {
+	newNode, _ := v.Enter(n)
+	n = newNode.(*DropImportStmt)
+	return v.Leave(n)
+}
+
+func (n *DropImportStmt) Restore(ctx *format.RestoreCtx) error {
+	ctx.WriteKeyWord("DROP IMPORT ")
+	if n.IfExists {
+		ctx.WriteKeyWord("IF EXISTS ")
+	}
+	ctx.WriteName(n.Name)
+	return nil
+}
+
+type ShowImportStmt struct {
+	stmtNode
+
+	Name       string
+	ErrorsOnly bool
+	TableNames []*TableName
+}
+
+func (n *ShowImportStmt) Accept(v Visitor) (Node, bool) {
+	newNode, _ := v.Enter(n)
+	n = newNode.(*ShowImportStmt)
+	return v.Leave(n)
+}
+
+func (n *ShowImportStmt) Restore(ctx *format.RestoreCtx) error {
+	ctx.WriteKeyWord("SHOW IMPORT ")
+	ctx.WriteName(n.Name)
+	if n.ErrorsOnly {
+		ctx.WriteKeyWord(" ERRORS")
+	}
+	if len(n.TableNames) != 0 {
+		ctx.WriteKeyWord(" TABLE")
+	}
+	for i := range n.TableNames {
+		if i == 0 {
+			ctx.WritePlain(" ")
+		} else {
+			ctx.WritePlain(", ")
+		}
+		if err := n.TableNames[i].Restore(ctx); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -3692,11 +3291,9 @@ type HintTable struct {
 }
 
 func (ht *HintTable) Restore(ctx *format.RestoreCtx) {
-	if !ctx.Flags.HasWithoutSchemaNameFlag() {
-		if ht.DBName.L != "" {
-			ctx.WriteName(ht.DBName.String())
-			ctx.WriteKeyWord(".")
-		}
+	if ht.DBName.L != "" {
+		ctx.WriteName(ht.DBName.String())
+		ctx.WriteKeyWord(".")
 	}
 	ctx.WriteName(ht.TableName.String())
 	if ht.QBName.L != "" {
@@ -3726,13 +3323,9 @@ func (n *TableOptimizerHint) Restore(ctx *format.RestoreCtx) error {
 		}
 		ctx.WriteName(n.QBName.String())
 	}
-	if n.HintName.L == "qb_name" && len(n.Tables) == 0 {
-		ctx.WritePlain(")")
-		return nil
-	}
 	// Hints without args except query block.
 	switch n.HintName.L {
-	case "mpp_1phase_agg", "mpp_2phase_agg", "hash_agg", "stream_agg", "agg_to_cop", "read_consistent_replica", "no_index_merge", "ignore_plan_cache", "limit_to_cop", "straight_join", "merge", "no_decorrelate":
+	case "hash_agg", "stream_agg", "agg_to_cop", "read_consistent_replica", "no_index_merge", "qb_name", "ignore_plan_cache", "limit_to_cop":
 		ctx.WritePlain(")")
 		return nil
 	}
@@ -3743,20 +3336,16 @@ func (n *TableOptimizerHint) Restore(ctx *format.RestoreCtx) error {
 	switch n.HintName.L {
 	case "max_execution_time":
 		ctx.WritePlainf("%d", n.HintData.(uint64))
-	case "resource_group":
-		ctx.WriteName(n.HintData.(string))
 	case "nth_plan":
 		ctx.WritePlainf("%d", n.HintData.(int64))
-	case "tidb_hj", "tidb_smj", "tidb_inlj", "hash_join", "hash_join_build", "hash_join_probe", "merge_join", "inl_join",
-		"broadcast_join", "shuffle_join", "inl_hash_join", "inl_merge_join", "leading", "no_hash_join", "no_merge_join",
-		"no_index_join", "no_index_hash_join", "no_index_merge_join":
+	case "tidb_hj", "tidb_smj", "tidb_inlj", "hash_join", "merge_join", "inl_join", "broadcast_join", "broadcast_join_local", "inl_hash_join", "inl_merge_join":
 		for i, table := range n.Tables {
 			if i != 0 {
 				ctx.WritePlain(", ")
 			}
 			table.Restore(ctx)
 		}
-	case "use_index", "ignore_index", "use_index_merge", "force_index", "order_index", "no_order_index":
+	case "use_index", "ignore_index", "use_index_merge", "force_index":
 		n.Tables[0].Restore(ctx)
 		ctx.WritePlain(" ")
 		for i, index := range n.Indexes {
@@ -3764,16 +3353,6 @@ func (n *TableOptimizerHint) Restore(ctx *format.RestoreCtx) error {
 				ctx.WritePlain(", ")
 			}
 			ctx.WriteName(index.String())
-		}
-	case "qb_name":
-		if len(n.Tables) > 0 {
-			ctx.WritePlain(", ")
-			for i, table := range n.Tables {
-				if i != 0 {
-					ctx.WritePlain(". ")
-				}
-				table.Restore(ctx)
-			}
 		}
 	case "use_toja", "use_cascades":
 		if n.HintData.(bool) {
@@ -3805,8 +3384,8 @@ func (n *TableOptimizerHint) Restore(ctx *format.RestoreCtx) error {
 		ctx.WriteString(hintData.To)
 	case "set_var":
 		hintData := n.HintData.(HintSetVar)
-		ctx.WritePlain(hintData.VarName)
-		ctx.WritePlain(" = ")
+		ctx.WriteString(hintData.VarName)
+		ctx.WritePlain(", ")
 		ctx.WriteString(hintData.Value)
 	}
 	ctx.WritePlain(")")
@@ -3823,12 +3402,6 @@ func (n *TableOptimizerHint) Accept(v Visitor) (Node, bool) {
 	return v.Leave(n)
 }
 
-// TextString represent a string, it can be a binary literal.
-type TextString struct {
-	Value           string
-	IsBinaryLiteral bool
-}
-
 type BinaryLiteral interface {
 	ToString() string
 }
@@ -3841,284 +3414,3 @@ var NewHexLiteral func(string) (interface{}, error)
 
 // NewBitLiteral creates a types.BitLiteral value, it's provided by parser driver.
 var NewBitLiteral func(string) (interface{}, error)
-
-// SetResourceGroupStmt is a statement to set the resource group name for current session.
-type SetResourceGroupStmt struct {
-	stmtNode
-	Name model.CIStr
-}
-
-func (n *SetResourceGroupStmt) Restore(ctx *format.RestoreCtx) error {
-	ctx.WriteKeyWord("SET RESOURCE GROUP ")
-	ctx.WriteName(n.Name.O)
-	return nil
-}
-
-// Accept implements Node Accept interface.
-func (n *SetResourceGroupStmt) Accept(v Visitor) (Node, bool) {
-	newNode, skipChildren := v.Enter(n)
-	if skipChildren {
-		return v.Leave(newNode)
-	}
-	n = newNode.(*SetResourceGroupStmt)
-	return v.Leave(n)
-}
-
-// CalibrateResourceType is the type for CalibrateResource statement.
-type CalibrateResourceType int
-
-// calibrate resource [ workload < TPCC | OLTP_READ_WRITE | OLTP_READ_ONLY | OLTP_WRITE_ONLY | TPCH_10> ]
-const (
-	WorkloadNone CalibrateResourceType = iota
-	TPCC
-	OLTPREADWRITE
-	OLTPREADONLY
-	OLTPWRITEONLY
-	TPCH10
-)
-
-func (n CalibrateResourceType) Restore(ctx *format.RestoreCtx) error {
-	switch n {
-	case TPCC:
-		ctx.WriteKeyWord(" WORKLOAD TPCC")
-	case OLTPREADWRITE:
-		ctx.WriteKeyWord(" WORKLOAD OLTP_READ_WRITE")
-	case OLTPREADONLY:
-		ctx.WriteKeyWord(" WORKLOAD OLTP_READ_ONLY")
-	case OLTPWRITEONLY:
-		ctx.WriteKeyWord(" WORKLOAD OLTP_WRITE_ONLY")
-	case TPCH10:
-		ctx.WriteKeyWord(" WORKLOAD TPCH_10")
-	}
-	return nil
-}
-
-// CalibrateResourceStmt is a statement to fetch the cluster RU capacity
-type CalibrateResourceStmt struct {
-	stmtNode
-	DynamicCalibrateResourceOptionList []*DynamicCalibrateResourceOption
-	Tp                                 CalibrateResourceType
-}
-
-// Restore implements Node interface.
-func (n *CalibrateResourceStmt) Restore(ctx *format.RestoreCtx) error {
-	ctx.WriteKeyWord("CALIBRATE RESOURCE")
-	if err := n.Tp.Restore(ctx); err != nil {
-		return errors.Annotate(err, "An error occurred while restore CalibrateResourceStmt.CalibrateResourceType")
-	}
-	for i, option := range n.DynamicCalibrateResourceOptionList {
-		ctx.WritePlain(" ")
-		if err := option.Restore(ctx); err != nil {
-			return errors.Annotatef(err, "An error occurred while splicing DynamicCalibrateResourceOption: [%v]", i)
-		}
-	}
-	return nil
-}
-
-// Accept implements Node Accept interface.
-func (n *CalibrateResourceStmt) Accept(v Visitor) (Node, bool) {
-	newNode, skipChildren := v.Enter(n)
-	if skipChildren {
-		return v.Leave(newNode)
-	}
-	n = newNode.(*CalibrateResourceStmt)
-	for _, val := range n.DynamicCalibrateResourceOptionList {
-		_, ok := val.Accept(v)
-		if !ok {
-			return n, false
-		}
-	}
-	return v.Leave(n)
-}
-
-type DynamicCalibrateType int
-
-const (
-	// specific time
-	CalibrateStartTime = iota
-	CalibrateEndTime
-	CalibrateDuration
-)
-
-type DynamicCalibrateResourceOption struct {
-	stmtNode
-	Tp       DynamicCalibrateType
-	StrValue string
-	Ts       ExprNode
-	Unit     TimeUnitType
-}
-
-func (n *DynamicCalibrateResourceOption) Restore(ctx *format.RestoreCtx) error {
-	switch n.Tp {
-	case CalibrateStartTime:
-		ctx.WriteKeyWord("START_TIME ")
-		if err := n.Ts.Restore(ctx); err != nil {
-			return errors.Annotate(err, "An error occurred while splicing DynamicCalibrateResourceOption StartTime")
-		}
-	case CalibrateEndTime:
-		ctx.WriteKeyWord("END_TIME ")
-		if err := n.Ts.Restore(ctx); err != nil {
-			return errors.Annotate(err, "An error occurred while splicing DynamicCalibrateResourceOption EndTime")
-		}
-	case CalibrateDuration:
-		ctx.WriteKeyWord("DURATION ")
-		if len(n.StrValue) > 0 {
-			ctx.WriteString(n.StrValue)
-		} else {
-			ctx.WriteKeyWord("INTERVAL ")
-			if err := n.Ts.Restore(ctx); err != nil {
-				return errors.Annotate(err, "An error occurred while restore DynamicCalibrateResourceOption DURATION TS")
-			}
-			ctx.WritePlain(" ")
-			ctx.WriteKeyWord(n.Unit.String())
-		}
-	default:
-		return errors.Errorf("invalid DynamicCalibrateResourceOption: %d", n.Tp)
-	}
-	return nil
-}
-
-// Accept implements Node Accept interface.
-func (n *DynamicCalibrateResourceOption) Accept(v Visitor) (Node, bool) {
-	newNode, skipChildren := v.Enter(n)
-	if skipChildren {
-		return v.Leave(newNode)
-	}
-	n = newNode.(*DynamicCalibrateResourceOption)
-	if n.Ts != nil {
-		node, ok := n.Ts.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.Ts = node.(ExprNode)
-	}
-	return v.Leave(n)
-}
-
-// DropQueryWatchStmt is a statement to drop a runaway watch item.
-type DropQueryWatchStmt struct {
-	stmtNode
-	IntValue int64
-}
-
-func (n *DropQueryWatchStmt) Restore(ctx *format.RestoreCtx) error {
-	ctx.WriteKeyWord("QUERY WATCH REMOVE ")
-	ctx.WritePlainf("%d", n.IntValue)
-	return nil
-}
-
-// Accept implements Node Accept interface.
-func (n *DropQueryWatchStmt) Accept(v Visitor) (Node, bool) {
-	newNode, _ := v.Enter(n)
-	n = newNode.(*DropQueryWatchStmt)
-	return v.Leave(n)
-}
-
-// AddQueryWatchStmt is a statement to add a runaway watch item.
-type AddQueryWatchStmt struct {
-	stmtNode
-	QueryWatchOptionList []*QueryWatchOption
-}
-
-func (n *AddQueryWatchStmt) Restore(ctx *format.RestoreCtx) error {
-	ctx.WriteKeyWord("QUERY WATCH ADD")
-	for i, option := range n.QueryWatchOptionList {
-		ctx.WritePlain(" ")
-		if err := option.Restore(ctx); err != nil {
-			return errors.Annotatef(err, "An error occurred while splicing QueryWatchOptionList: [%v]", i)
-		}
-	}
-	return nil
-}
-
-// Accept implements Node Accept interface.
-func (n *AddQueryWatchStmt) Accept(v Visitor) (Node, bool) {
-	newNode, _ := v.Enter(n)
-	n = newNode.(*AddQueryWatchStmt)
-	for _, val := range n.QueryWatchOptionList {
-		_, ok := val.Accept(v)
-		if !ok {
-			return n, false
-		}
-	}
-	return v.Leave(n)
-}
-
-type QueryWatchOptionType int
-
-const (
-	QueryWatchResourceGroup QueryWatchOptionType = iota
-	QueryWatchAction
-	QueryWatchType
-)
-
-// QueryWatchOption is used for parsing manual management of watching runaway queries option.
-type QueryWatchOption struct {
-	stmtNode
-	Tp        QueryWatchOptionType
-	StrValue  model.CIStr
-	IntValue  int32
-	ExprValue ExprNode
-	BoolValue bool
-}
-
-func (n *QueryWatchOption) Restore(ctx *format.RestoreCtx) error {
-	switch n.Tp {
-	case QueryWatchResourceGroup:
-		ctx.WriteKeyWord("RESOURCE GROUP ")
-		if n.ExprValue != nil {
-			if err := n.ExprValue.Restore(ctx); err != nil {
-				return errors.Annotatef(err, "An error occurred while splicing ExprValue: [%v]", n.ExprValue)
-			}
-		} else {
-			ctx.WriteName(n.StrValue.O)
-		}
-	case QueryWatchAction:
-		ctx.WriteKeyWord("ACTION ")
-		ctx.WritePlain("= ")
-		ctx.WriteKeyWord(model.RunawayActionType(n.IntValue).String())
-	case QueryWatchType:
-		if n.BoolValue {
-			ctx.WriteKeyWord("SQL TEXT ")
-			ctx.WriteKeyWord(model.RunawayWatchType(n.IntValue).String())
-			ctx.WriteKeyWord(" TO ")
-		} else {
-			switch n.IntValue {
-			case int32(model.WatchSimilar):
-				ctx.WriteKeyWord("SQL DIGEST ")
-			case int32(model.WatchPlan):
-				ctx.WriteKeyWord("PLAN DIGEST ")
-			}
-		}
-		if err := n.ExprValue.Restore(ctx); err != nil {
-			return errors.Annotatef(err, "An error occurred while splicing ExprValue: [%v]", n.ExprValue)
-		}
-	}
-	return nil
-}
-
-// Accept implements Node Accept interface.
-func (n *QueryWatchOption) Accept(v Visitor) (Node, bool) {
-	newNode, skipChildren := v.Enter(n)
-	if skipChildren {
-		return v.Leave(newNode)
-	}
-	n = newNode.(*QueryWatchOption)
-	if n.ExprValue != nil {
-		node, ok := n.ExprValue.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.ExprValue = node.(ExprNode)
-	}
-	return v.Leave(n)
-}
-
-func CheckQueryWatchAppend(ops []*QueryWatchOption, newOp *QueryWatchOption) bool {
-	for _, op := range ops {
-		if op.Tp == newOp.Tp {
-			return false
-		}
-	}
-	return true
-}

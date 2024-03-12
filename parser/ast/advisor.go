@@ -15,7 +15,6 @@ package ast
 
 import (
 	"github.com/dean2021/sqlparser/parser/format"
-	"github.com/pingcap/errors"
 )
 
 var _ StmtNode = &IndexAdviseStmt{}
@@ -46,11 +45,7 @@ func (n *IndexAdviseStmt) Restore(ctx *format.RestoreCtx) error {
 	if n.MaxIndexNum != nil {
 		n.MaxIndexNum.Restore(ctx)
 	}
-	if n.LinesInfo != nil {
-		if err := n.LinesInfo.Restore(ctx); err != nil {
-			return errors.Annotate(err, "An error occurred while restore IndexAdviseStmt.LinesInfo")
-		}
-	}
+	n.LinesInfo.Restore(ctx)
 	return nil
 }
 

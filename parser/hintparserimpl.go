@@ -16,23 +16,20 @@ package parser
 import (
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/dean2021/sqlparser/parser/ast"
 	"github.com/dean2021/sqlparser/parser/mysql"
 	"github.com/dean2021/sqlparser/parser/terror"
 )
 
-//revive:disable:exported
 var (
 	ErrWarnOptimizerHintUnsupportedHint = terror.ClassParser.NewStd(mysql.ErrWarnOptimizerHintUnsupportedHint)
 	ErrWarnOptimizerHintInvalidToken    = terror.ClassParser.NewStd(mysql.ErrWarnOptimizerHintInvalidToken)
 	ErrWarnMemoryQuotaOverflow          = terror.ClassParser.NewStd(mysql.ErrWarnMemoryQuotaOverflow)
 	ErrWarnOptimizerHintParseError      = terror.ClassParser.NewStd(mysql.ErrWarnOptimizerHintParseError)
 	ErrWarnOptimizerHintInvalidInteger  = terror.ClassParser.NewStd(mysql.ErrWarnOptimizerHintInvalidInteger)
-	ErrWarnOptimizerHintWrongPos        = terror.ClassParser.NewStd(mysql.ErrWarnOptimizerHintWrongPos)
 )
-
-//revive:enable:exported
 
 // hintScanner implements the yyhintLexer interface
 type hintScanner struct {
@@ -41,7 +38,7 @@ type hintScanner struct {
 
 func (hs *hintScanner) Errorf(format string, args ...interface{}) error {
 	inner := hs.Scanner.Errorf(format, args...)
-	return ErrParse.GenWithStackByArgs("Optimizer hint syntax error at", inner)
+	return ErrWarnOptimizerHintParseError.GenWithStackByArgs(inner)
 }
 
 func (hs *hintScanner) Lex(lval *yyhintSymType) int {
@@ -54,7 +51,7 @@ func (hs *hintScanner) Lex(lval *yyhintSymType) int {
 		n, e := strconv.ParseUint(lit, 10, 64)
 		if e != nil {
 			hs.AppendError(ErrWarnOptimizerHintInvalidInteger.GenWithStackByArgs(lit))
-			return hintInvalid
+			return int(unicode.ReplacementChar)
 		}
 		lval.number = n
 		return hintIntLit
@@ -111,7 +108,7 @@ func (hs *hintScanner) Lex(lval *yyhintSymType) int {
 	}
 
 	hs.AppendError(ErrWarnOptimizerHintInvalidToken.GenWithStackByArgs(errorTokenType, lit, tok))
-	return hintInvalid
+	return int(unicode.ReplacementChar)
 }
 
 type hintParser struct {
@@ -155,7 +152,7 @@ func ParseHint(input string, sqlMode mysql.SQLMode, initPos Pos) ([]*ast.TableOp
 }
 
 func (hp *hintParser) warnUnsupportedHint(name string) {
-	warn := ErrWarnOptimizerHintUnsupportedHint.FastGenByArgs(name)
+	warn := ErrWarnOptimizerHintUnsupportedHint.GenWithStackByArgs(name)
 	hp.lexer.warns = append(hp.lexer.warns, warn)
 }
 

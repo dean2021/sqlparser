@@ -570,7 +570,7 @@ const (
 	ErrEventCompile                                          = 1550
 	ErrEventSameName                                         = 1551
 	ErrEventDataTooLong                                      = 1552
-	ErrDropIndexNeededInForeignKey                           = 1553
+	ErrDropIndexFk                                           = 1553
 	ErrWarnDeprecatedSyntaxWithVer                           = 1554
 	ErrCantWriteLockLogTable                                 = 1555
 	ErrCantLockLogTable                                      = 1556
@@ -667,7 +667,7 @@ const (
 	WarnCondItemTruncated                                    = 1647
 	ErrCondItemTooLong                                       = 1648
 	ErrUnknownLocale                                         = 1649
-	ErrSlaveIgnoreServerIDs                                  = 1650
+	ErrSlaveIgnoreServerIds                                  = 1650
 	ErrQueryCacheDisabled                                    = 1651
 	ErrSameNamePartitionField                                = 1652
 	ErrPartitionColumnList                                   = 1653
@@ -718,7 +718,7 @@ const (
 	ErrAccessDeniedNoPassword                                = 1698
 	ErrSetPasswordAuthPlugin                                 = 1699
 	ErrGrantPluginUserExists                                 = 1700
-	ErrTruncateIllegalForeignKey                             = 1701
+	ErrTruncateIllegalFk                                     = 1701
 	ErrPluginIsPermanent                                     = 1702
 	ErrSlaveHeartbeatValueOutOfRangeMin                      = 1703
 	ErrSlaveHeartbeatValueOutOfRangeMax                      = 1704
@@ -839,18 +839,18 @@ const (
 	ErrNotValidPassword                                      = 1819
 	ErrMustChangePassword                                    = 1820
 	ErrFkNoIndexChild                                        = 1821
-	ErrForeignKeyNoIndexInParent                             = 1822
+	ErrFkNoIndexParent                                       = 1822
 	ErrFkFailAddSystem                                       = 1823
-	ErrForeignKeyCannotOpenParent                            = 1824
+	ErrFkCannotOpenParent                                    = 1824
 	ErrFkIncorrectOption                                     = 1825
 	ErrFkDupName                                             = 1826
 	ErrPasswordFormat                                        = 1827
 	ErrFkColumnCannotDrop                                    = 1828
 	ErrFkColumnCannotDropChild                               = 1829
-	ErrForeignKeyColumnNotNull                               = 1830
+	ErrFkColumnNotNull                                       = 1830
 	ErrDupIndex                                              = 1831
-	ErrForeignKeyColumnCannotChange                          = 1832
-	ErrForeignKeyColumnCannotChangeChild                     = 1833
+	ErrFkColumnCannotChange                                  = 1832
+	ErrFkColumnCannotChangeChild                             = 1833
 	ErrFkCannotDeleteParent                                  = 1834
 	ErrMalformedPacket                                       = 1835
 	ErrReadOnlyMode                                          = 1836
@@ -882,9 +882,8 @@ const (
 	ErrMustChangePasswordLogin                               = 1862
 	ErrRowInWrongPartition                                   = 1863
 	ErrErrorLast                                             = 1863
+	ErrMaxExecTimeExceeded                                   = 1907
 	ErrInvalidFieldSize                                      = 3013
-	ErrPasswordExpireAnonymousUser                           = 3016
-	ErrMaxExecTimeExceeded                                   = 3024
 	ErrIncorrectType                                         = 3064
 	ErrInvalidJSONData                                       = 3069
 	ErrGeneratedColumnFunctionIsNotAllowed                   = 3102
@@ -927,11 +926,11 @@ const (
 	ErrWindowNestedWindowFuncUseInWindowSpec                 = 3595
 	ErrWindowRowsIntervalUse                                 = 3596
 	ErrWindowNoGroupOrderUnused                              = 3597
-	ErrWindowExplainJson                                     = 3598 //nolint: revive
+	ErrWindowExplainJson                                     = 3598
 	ErrWindowFunctionIgnoresFrame                            = 3599
 	ErrDataTruncatedFunctionalIndex                          = 3751
 	ErrDataOutOfRangeFunctionalIndex                         = 3752
-	ErrFunctionalIndexOnJsonOrGeometryFunction               = 3753 //nolint: revive
+	ErrFunctionalIndexOnJsonOrGeometryFunction               = 3753
 	ErrFunctionalIndexRefAutoIncrement                       = 3754
 	ErrCannotDropColumnFunctionalIndex                       = 3755
 	ErrFunctionalIndexPrimaryKey                             = 3756
@@ -944,8 +943,8 @@ const (
 	ErrFKIncompatibleColumns                                 = 3780
 	ErrFunctionalIndexRowValueIsNotAllowed                   = 3800
 	ErrDependentByFunctionalIndex                            = 3837
-	ErrInvalidJsonValueForFuncIndex                          = 3903 //nolint: revive
-	ErrJsonValueOutOfRangeForFuncIndex                       = 3904 //nolint: revive
+	ErrInvalidJsonValueForFuncIndex                          = 3903
+	ErrJsonValueOutOfRangeForFuncIndex                       = 3904
 	ErrFunctionalIndexDataIsTooLong                          = 3907
 	ErrFunctionalIndexNotApplicable                          = 3909
 
@@ -967,8 +966,7 @@ const (
 	ErrWarnMemoryQuotaOverflow          = 8063
 	ErrWarnOptimizerHintParseError      = 8064
 	ErrWarnOptimizerHintInvalidInteger  = 8065
-	ErrWarnOptimizerHintWrongPos        = 8066
 
 	// Stop adding error code here!
-	// They are moved to github.com/pingcap/tidb/pkg/errno
+	// They are moved to github.com/pingcap/tidb/errno
 )

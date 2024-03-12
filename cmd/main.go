@@ -16,24 +16,17 @@ type SQLiDetect struct {
 
 func (v *SQLiDetect) Enter(in ast.Node) (ast.Node, bool) {
 
-	//if name, ok := in.(*ast.ColumnName); ok {
-	//	v.colNames = append(v.colNames, name.Name.O)
-	//}
-
 	if selectStmt, ok := in.(*ast.SelectStmt); ok {
 		// 子查询
 		if selectStmt.AfterSetOperator != nil {
 			v.isRisk = true
 		}
-
-		// SELECT a, b FROM t where id=1 or 1=1
 		if op, ok := selectStmt.Where.(*ast.BinaryOperationExpr); ok {
-			if op.Op != opcode.EQ {
+			if op.Op == opcode.LogicOr || op.Op == opcode.LogicAnd {
 				v.isRisk = true
 			}
 
 			if callStmt, ok := op.R.(*ast.FuncCallExpr); ok {
-
 				// TODO 检查函数名是否在黑名单列表内，如果在则标识存在风险
 				fmt.Println(callStmt.FnName)
 			}
@@ -49,10 +42,12 @@ func (v *SQLiDetect) Enter(in ast.Node) (ast.Node, bool) {
 
 		// 函数调用
 	}
+
 	return in, false
 }
 
 func (v *SQLiDetect) Leave(in ast.Node) (ast.Node, bool) {
+
 	return in, true
 }
 
@@ -80,17 +75,36 @@ func main() {
 	// AND 1083=1083 AND (1427=1427
 	// ;delete from xx
 
-	astNode, err := parse("select * from pa where id=version() --'")
+	//astNode, err := parse("'1' or 1=1")
+	//if err != nil {
+	//	fmt.Printf("parse error: %v\n", err.Error())
+	//	return
+	//}
+	//fmt.Println(astNode)
+
+	p := parser.New()
+
+	stmts, _, err := p.Parse("1 or 1=1", "", "")
 	if err != nil {
-		fmt.Printf("parse error: %v\n", err.Error())
+		fmt.Println("解析错误:", err)
 		return
 	}
-	v := &SQLiDetect{}
-	(*astNode).Accept(v)
+	fmt.Println(stmts)
+	//v := &SQLiDetect{}
+	//(*astNode).Accept(v)
+	//
+	//if v.isRisk {
+	//	fmt.Println("发现sql注入")
+	//}
 
-	if v.isRisk {
-		fmt.Println("发现sql注入")
-	}
+	//scanner := parser.NewScanner(`' or 1=1`)
+	//scanner.LexLiteral()
+	//
+	//fmt.Println(scanner)
+	//// 使用reflect.ValueOf获取结构体的值
+	//v := reflect.ValueOf(*scanner)
+	//v.FieldByName("buf").(bytes.Buffer)
+	//fmt.Println()
 
 	//fmt.Printf("%v\n", *astNode)
 }

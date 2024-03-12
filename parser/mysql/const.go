@@ -31,7 +31,7 @@ var (
 	TiDBReleaseVersion = "None"
 
 	// ServerVersion is the version information of this tidb-server in MySQL's format.
-	ServerVersion = fmt.Sprintf("8.0.11-TiDB-%s", TiDBReleaseVersion)
+	ServerVersion = fmt.Sprintf("5.7.25-TiDB-%s", TiDBReleaseVersion)
 )
 
 // Header information.
@@ -42,7 +42,7 @@ const (
 	LocalInFileHeader byte = 0xfb
 )
 
-// AuthSwitchRequest is a protocol feature.
+// Protocol Features
 const AuthSwitchRequest byte = 0xfe
 
 // Server information.
@@ -81,8 +81,6 @@ const (
 	MaxKeyParts = 16
 	// MaxIndexIdentifierLen is max length of index identifier.
 	MaxIndexIdentifierLen = 64
-	// MaxForeignKeyIdentifierLen is max length of foreign key identifier.
-	MaxForeignKeyIdentifierLen = 64
 	// MaxConstraintIdentifierLen is max length of constrain identifier.
 	MaxConstraintIdentifierLen = 64
 	// MaxViewIdentifierLen is max length of view identifier.
@@ -133,40 +131,30 @@ const (
 	ComEnd
 )
 
-// Client information. https://dev.mysql.com/doc/dev/mysql-server/latest/group__group__cs__capabilities__flags.html
+// Client information.
 const (
-	ClientLongPassword               uint32 = 1 << iota // CLIENT_LONG_PASSWORD
-	ClientFoundRows                                     // CLIENT_FOUND_ROWS
-	ClientLongFlag                                      // CLIENT_LONG_FLAG
-	ClientConnectWithDB                                 // CLIENT_CONNECT_WITH_DB
-	ClientNoSchema                                      // CLIENT_NO_SCHEMA
-	ClientCompress                                      // CLIENT_COMPRESS
-	ClientODBC                                          // CLIENT_ODBC
-	ClientLocalFiles                                    // CLIENT_LOCAL_FILES
-	ClientIgnoreSpace                                   // CLIENT_IGNORE_SPACE
-	ClientProtocol41                                    // CLIENT_PROTOCOL_41
-	ClientInteractive                                   // CLIENT_INTERACTIVE
-	ClientSSL                                           // CLIENT_SSL
-	ClientIgnoreSigpipe                                 // CLIENT_IGNORE_SIGPIPE
-	ClientTransactions                                  // CLIENT_TRANSACTIONS
-	ClientReserved                                      // Deprecated: CLIENT_RESERVED
-	ClientSecureConnection                              // Deprecated: CLIENT_SECURE_CONNECTION
-	ClientMultiStatements                               // CLIENT_MULTI_STATEMENTS
-	ClientMultiResults                                  // CLIENT_MULTI_RESULTS
-	ClientPSMultiResults                                // CLIENT_PS_MULTI_RESULTS
-	ClientPluginAuth                                    // CLIENT_PLUGIN_AUTH
-	ClientConnectAtts                                   // CLIENT_CONNECT_ATTRS
-	ClientPluginAuthLenencClientData                    // CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA
-	ClientHandleExpiredPasswords                        // CLIENT_CAN_HANDLE_EXPIRED_PASSWORDS, Not supported: https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_basic_expired_passwords.html
-	ClientSessionTrack                                  // CLIENT_SESSION_TRACK, Not supported: https://github.com/pingcap/tidb/issues/35309
-	ClientDeprecateEOF                                  // CLIENT_DEPRECATE_EOF
-	ClientOptionalResultsetMetadata                     // CLIENT_OPTIONAL_RESULTSET_METADATA, Not supported: https://dev.mysql.com/doc/c-api/8.0/en/c-api-optional-metadata.html
-	ClientZstdCompressionAlgorithm                      // CLIENT_ZSTD_COMPRESSION_ALGORITHM
-	// 1 << 27 == CLIENT_QUERY_ATTRIBUTES
-	// 1 << 28 == MULTI_FACTOR_AUTHENTICATION
-	// 1 << 29 == CLIENT_CAPABILITY_EXTENSION
-	// 1 << 30 == CLIENT_SSL_VERIFY_SERVER_CERT
-	// 1 << 31 == CLIENT_REMEMBER_OPTIONS
+	ClientLongPassword uint32 = 1 << iota
+	ClientFoundRows
+	ClientLongFlag
+	ClientConnectWithDB
+	ClientNoSchema
+	ClientCompress
+	ClientODBC
+	ClientLocalFiles
+	ClientIgnoreSpace
+	ClientProtocol41
+	ClientInteractive
+	ClientSSL
+	ClientIgnoreSigpipe
+	ClientTransactions
+	ClientReserved
+	ClientSecureConnection
+	ClientMultiStatements
+	ClientMultiResults
+	ClientPSMultiResults
+	ClientPluginAuth
+	ClientConnectAtts
+	ClientPluginAuthLenencClientData
 )
 
 // Cache type information.
@@ -176,24 +164,15 @@ const (
 
 // Auth name information.
 const (
-	AuthNativePassword      = "mysql_native_password" // #nosec G101
-	AuthCachingSha2Password = "caching_sha2_password" // #nosec G101
-	AuthTiDBSM3Password     = "tidb_sm3_password"     // #nosec G101
-	AuthMySQLClearPassword  = "mysql_clear_password"
+	AuthNativePassword      = "mysql_native_password"
+	AuthCachingSha2Password = "caching_sha2_password"
 	AuthSocket              = "auth_socket"
-	AuthTiDBSessionToken    = "tidb_session_token"
-	AuthTiDBAuthToken       = "tidb_auth_token"
-	AuthLDAPSimple          = "authentication_ldap_simple"
-	AuthLDAPSASL            = "authentication_ldap_sasl"
 )
 
 // MySQL database and tables.
 const (
 	// SystemDB is the name of system database.
 	SystemDB = "mysql"
-	// SysDB is the name of `sys` schema, which is a set of objects to help users to interpret data collected
-	// in `information_schema`.
-	SysDB = "sys"
 	// GlobalPrivTable is the table in system db contains global scope privilege info.
 	GlobalPrivTable = "global_priv"
 	// UserTable is the table in system db contains user info.
@@ -210,17 +189,15 @@ const (
 	GlobalStatusTable = "GLOBAL_STATUS"
 	// TiDBTable is the table contains tidb info.
 	TiDBTable = "tidb"
-	// RoleEdgeTable is the table contains role relation info
+	//  RoleEdgesTable is the table contains role relation info
 	RoleEdgeTable = "role_edges"
 	// DefaultRoleTable is the table contain default active role info
 	DefaultRoleTable = "default_roles"
-	// PasswordHistoryTable is the table in system db contains password history.
-	PasswordHistoryTable = "password_history"
 )
 
 // MySQL type maximum length.
 const (
-	// NotFixedDec For arguments that have no fixed number of decimals, the decimals value is set to 31,
+	// For arguments that have no fixed number of decimals, the decimals value is set to 31,
 	// which is 1 more than the maximum number of decimals permitted for the DECIMAL, FLOAT, and DOUBLE data types.
 	NotFixedDec = 31
 
@@ -237,7 +214,6 @@ const (
 	MaxDurationWidthNoFsp    = 10 // HH:MM:SS
 	MaxDurationWidthWithFsp  = 17 // HH:MM:SS[.fraction] -838:59:59.000000 to 838:59:59.000000
 	MaxBlobWidth             = 16777216
-	MaxLongBlobWidth         = 4294967295
 	MaxBitDisplayWidth       = 64
 	MaxFloatPrecisionLength  = 24
 	MaxDoublePrecisionLength = 53
@@ -254,12 +230,7 @@ const MaxTypeSetMembers = 64
 
 // PWDHashLen is the length of mysql_native_password's hash.
 const PWDHashLen = 40 // excluding the '*'
-
-// SHAPWDHashLen is the length of sha256_password's hash.
 const SHAPWDHashLen = 70
-
-// SM3PWDHashLen is the length of tidb_sm3_password's hash.
-const SM3PWDHashLen = 70
 
 // Command2Str is the command information to command name.
 var Command2Str = map[byte]string{
@@ -413,16 +384,6 @@ func (m SQLMode) HasNoAutoCreateUserMode() bool {
 // HasAllowInvalidDatesMode detects if 'ALLOW_INVALID_DATES' mode is set in SQLMode
 func (m SQLMode) HasAllowInvalidDatesMode() bool {
 	return m&ModeAllowInvalidDates == ModeAllowInvalidDates
-}
-
-// DelSQLMode delete sql mode from ori
-func DelSQLMode(ori SQLMode, del SQLMode) SQLMode {
-	return ori & (^del)
-}
-
-// SetSQLMode add sql mode to ori
-func SetSQLMode(ori SQLMode, add SQLMode) SQLMode {
-	return ori | add
 }
 
 // consts for sql modes.
@@ -628,31 +589,7 @@ func (n *PriorityEnum) Restore(ctx *format.RestoreCtx) error {
 	return nil
 }
 
+// PrimaryKeyName defines primary key name.
 const (
-	// PrimaryKeyName defines primary key name.
 	PrimaryKeyName = "PRIMARY"
-	// DefaultDecimal defines the default decimal value when the value out of range.
-	DefaultDecimal = "99999999999999999999999999999999999999999999999999999999999999999"
-	// PartitionCountLimit is limit of the number of partitions in a table.
-	// Reference linking https://dev.mysql.com/doc/refman/5.7/en/partitioning-limitations.html.
-	PartitionCountLimit = 8192
-)
-
-// This is enum_cursor_type in MySQL
-const (
-	CursorTypeReadOnly = 1 << iota
-	CursorTypeForUpdate
-	CursorTypeScrollable
-)
-
-// ZlibCompressDefaultLevel is the zlib compression level for the compressed protocol
-const ZlibCompressDefaultLevel = 6
-
-const (
-	// CompressionNone is no compression in use
-	CompressionNone = iota
-	// CompressionZlib is zlib/deflate
-	CompressionZlib
-	// CompressionZstd is Facebook's Zstandard
-	CompressionZstd
 )

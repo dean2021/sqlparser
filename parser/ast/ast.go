@@ -18,7 +18,6 @@ package ast
 import (
 	"io"
 
-	"github.com/dean2021/sqlparser/parser/charset"
 	"github.com/dean2021/sqlparser/parser/format"
 	"github.com/dean2021/sqlparser/parser/model"
 	"github.com/dean2021/sqlparser/parser/types"
@@ -38,12 +37,10 @@ type Node interface {
 	// children should be skipped. Otherwise, call its children in particular order that
 	// later elements depends on former elements. Finally, return visitor.Leave.
 	Accept(v Visitor) (node Node, ok bool)
-	// Text returns the utf8 encoding text of the element.
+	// Text returns the original text of the element.
 	Text() string
-	// OriginalText returns the original text of the element.
-	OriginalText() string
 	// SetText sets original text to the Node.
-	SetText(enc charset.Encoding, text string)
+	SetText(text string)
 	// SetOriginTextPosition set the start offset of this node in the origin text.
 	SetOriginTextPosition(offset int)
 	// OriginTextPosition get the start offset of this node in the origin text.
@@ -125,14 +122,18 @@ type DMLNode interface {
 type ResultField struct {
 	Column       *model.ColumnInfo
 	ColumnAsName model.CIStr
-	// EmptyOrgName indicates whether this field has an empty org_name. A field has an empty org name, if it's an
-	// expression. It's not sure whether it's safe to use empty string in `.Column.Name`, so a new field is added to
-	// indicate whether it's empty.
-	EmptyOrgName bool
+	Table        *model.TableInfo
+	TableAsName  model.CIStr
+	DBName       model.CIStr
 
-	Table       *model.TableInfo
-	TableAsName model.CIStr
-	DBName      model.CIStr
+	// Expr represents the expression for the result field. If it is generated from a select field, it would
+	// be the expression of that select field, otherwise the type would be ValueExpr and value
+	// will be set for every retrieved row.
+	Expr      ExprNode
+	TableName *TableName
+	// Referenced indicates the result field has been referenced or not.
+	// If not, we don't need to get the values.
+	Referenced bool
 }
 
 // ResultSetNode interface has a ResultFields property, represents a Node that returns result set.
@@ -162,99 +163,4 @@ type Visitor interface {
 	// Non-expression node must be the same type as the input node n.
 	// ok returns false to stop visiting.
 	Leave(n Node) (node Node, ok bool)
-}
-
-// GetStmtLabel generates a label for a statement.
-func GetStmtLabel(stmtNode StmtNode) string {
-	switch x := stmtNode.(type) {
-	case *AlterTableStmt:
-		return "AlterTable"
-	case *AnalyzeTableStmt:
-		return "AnalyzeTable"
-	case *BeginStmt:
-		return "Begin"
-	case *ChangeStmt:
-		return "Change"
-	case *CommitStmt:
-		return "Commit"
-	case *CompactTableStmt:
-		return "CompactTable"
-	case *CreateDatabaseStmt:
-		return "CreateDatabase"
-	case *CreateIndexStmt:
-		return "CreateIndex"
-	case *CreateTableStmt:
-		return "CreateTable"
-	case *CreateViewStmt:
-		return "CreateView"
-	case *CreateUserStmt:
-		return "CreateUser"
-	case *DeleteStmt:
-		return "Delete"
-	case *DropDatabaseStmt:
-		return "DropDatabase"
-	case *DropIndexStmt:
-		return "DropIndex"
-	case *DropTableStmt:
-		if x.IsView {
-			return "DropView"
-		}
-		return "DropTable"
-	case *ExplainStmt:
-		if _, ok := x.Stmt.(*ShowStmt); ok {
-			return "DescTable"
-		}
-		if x.Analyze {
-			return "ExplainAnalyzeSQL"
-		}
-		return "ExplainSQL"
-	case *InsertStmt:
-		if x.IsReplace {
-			return "Replace"
-		}
-		return "Insert"
-	case *ImportIntoStmt:
-		return "ImportInto"
-	case *LoadDataStmt:
-		return "LoadData"
-	case *RollbackStmt:
-		return "Rollback"
-	case *SelectStmt:
-		return "Select"
-	case *SetStmt, *SetPwdStmt:
-		return "Set"
-	case *ShowStmt:
-		return "Show"
-	case *TruncateTableStmt:
-		return "TruncateTable"
-	case *UpdateStmt:
-		return "Update"
-	case *GrantStmt:
-		return "Grant"
-	case *RevokeStmt:
-		return "Revoke"
-	case *DeallocateStmt:
-		return "Deallocate"
-	case *ExecuteStmt:
-		return "Execute"
-	case *PrepareStmt:
-		return "Prepare"
-	case *UseStmt:
-		return "Use"
-	case *CreateBindingStmt:
-		return "CreateBinding"
-	case *IndexAdviseStmt:
-		return "IndexAdvise"
-	case *DropBindingStmt:
-		return "DropBinding"
-	case *TraceStmt:
-		return "Trace"
-	case *ShutdownStmt:
-		return "Shutdown"
-	case *SavepointStmt:
-		return "Savepoint"
-	case *OptimizeTableStmt:
-		return "Optimize"
-	}
-	return "other"
 }

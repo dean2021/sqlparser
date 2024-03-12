@@ -32,9 +32,7 @@ var (
 	_ DMLNode = &CallStmt{}
 	_ DMLNode = &ShowStmt{}
 	_ DMLNode = &LoadDataStmt{}
-	_ DMLNode = &ImportIntoStmt{}
 	_ DMLNode = &SplitRegionStmt{}
-	_ DMLNode = &NonTransactionalDMLStmt{}
 
 	_ Node = &Assignment{}
 	_ Node = &ByItem{}
@@ -127,9 +125,7 @@ func (*Join) resultSet() {}
 // We get (t1 join t3) left join t2, the semantics is correct.
 func NewCrossJoin(left, right ResultSetNode) (n *Join) {
 	rj, ok := right.(*Join)
-	// don't break the explicit parents name scope constraints.
-	// this kind of join re-order can be done in logical-phase after the name resolution.
-	if !ok || rj.Right == nil || rj.ExplicitParens {
+	if !ok || rj.Right == nil {
 		return &Join{Left: left, Right: right, Tp: CrossJoin}
 	}
 
@@ -144,11 +140,11 @@ func NewCrossJoin(left, right ResultSetNode) (n *Join) {
 			leftMostLeafFatherOfRight.Tp = LeftJoin
 		}
 		leftChild := leftMostLeafFatherOfRight.Left
-		join, ok := leftChild.(*Join)
-		if !(ok && join.Right != nil) {
+		if join, ok := leftChild.(*Join); ok && join.Right != nil {
+			leftMostLeafFatherOfRight = join
+		} else {
 			break
 		}
-		leftMostLeafFatherOfRight = join
 	}
 
 	newCrossJoin := &Join{Left: left, Right: leftMostLeafFatherOfRight.Left, Tp: CrossJoin}
@@ -291,20 +287,23 @@ func (*TableName) resultSet() {}
 
 // Restore implements Node interface.
 func (n *TableName) restoreName(ctx *format.RestoreCtx) {
-	if !ctx.Flags.HasWithoutSchemaNameFlag() {
-		// restore db name
-		if n.Schema.String() != "" {
-			ctx.WriteName(n.Schema.String())
-			ctx.WritePlain(".")
-		} else if ctx.DefaultDB != "" {
-			// Try CTE, for a CTE table name, we shouldn't write the database name.
-			if !ctx.IsCTETableName(n.Name.L) {
-				ctx.WriteName(ctx.DefaultDB)
-				ctx.WritePlain(".")
+	if n.Schema.String() != "" {
+		ctx.WriteName(n.Schema.String())
+		ctx.WritePlain(".")
+	} else if ctx.DefaultDB != "" {
+		// Try CTE, for a CTE table name, we shouldn't write the database name.
+		ok := false
+		for _, name := range ctx.CTENames {
+			if strings.EqualFold(name, n.Name.String()) {
+				ok = true
+				break
 			}
 		}
+		if !ok {
+			ctx.WriteName(ctx.DefaultDB)
+			ctx.WritePlain(".")
+		}
 	}
-	// restore table name
 	ctx.WriteName(n.Name.String())
 }
 
@@ -361,8 +360,6 @@ const (
 	HintUse IndexHintType = iota + 1
 	HintIgnore
 	HintForce
-	HintOrderIndex
-	HintNoOrderIndex
 )
 
 // IndexHintScope is the type for index hint for join, order by or group by.
@@ -393,10 +390,6 @@ func (n *IndexHint) Restore(ctx *format.RestoreCtx) error {
 		indexHintType = "IGNORE INDEX"
 	case HintForce:
 		indexHintType = "FORCE INDEX"
-	case HintOrderIndex:
-		indexHintType = "ORDER INDEX"
-	case HintNoOrderIndex:
-		indexHintType = "NO ORDER INDEX"
 	default: // Prevent accidents
 		return errors.New("IndexHintType has an error while matching")
 	}
@@ -561,6 +554,7 @@ func (n *TableSource) Restore(ctx *format.RestoreCtx) error {
 			if err := tn.AsOf.Restore(ctx); err != nil {
 				return errors.Annotate(err, "An error occurred while restore TableSource.AsOf")
 			}
+
 		}
 		if err := tn.restoreIndexHints(ctx); err != nil {
 			return errors.Annotate(err, "An error occurred while restore TableSource.Source.(*TableName).IndexHints")
@@ -702,9 +696,7 @@ type SelectField struct {
 	// Auxiliary stands for if this field is auxiliary.
 	// When we add a Field into SelectField list which is used for having/orderby clause but the field is not in select clause,
 	// we should set its Auxiliary to true. Then the TrimExec will trim the field.
-	Auxiliary             bool
-	AuxiliaryColInAgg     bool
-	AuxiliaryColInOrderBy bool
+	Auxiliary bool
 }
 
 // Restore implements Node interface.
@@ -848,8 +840,7 @@ func (n *ByItem) Accept(v Visitor) (Node, bool) {
 // GroupByClause represents group by clause.
 type GroupByClause struct {
 	node
-	Items  []*ByItem
-	Rollup bool
+	Items []*ByItem
 }
 
 // Restore implements Node interface.
@@ -862,9 +853,6 @@ func (n *GroupByClause) Restore(ctx *format.RestoreCtx) error {
 		if err := v.Restore(ctx); err != nil {
 			return errors.Annotatef(err, "An error occurred while restore GroupByClause.Items[%d]", i)
 		}
-	}
-	if n.Rollup {
-		ctx.WriteKeyWord(" WITH ROLLUP")
 	}
 	return nil
 }
@@ -1001,6 +989,7 @@ func (s *TableSample) Restore(ctx *format.RestoreCtx) error {
 		ctx.WriteKeyWord(" PERCENT")
 	case SampleClauseUnitTypeRow:
 		ctx.WriteKeyWord(" ROWS")
+
 	}
 	ctx.WritePlain(")")
 	if s.RepeatableSeed != nil {
@@ -1063,54 +1052,6 @@ type CommonTableExpression struct {
 	Name        model.CIStr
 	Query       *SubqueryExpr
 	ColNameList []model.CIStr
-	IsRecursive bool
-
-	// Record how many consumers the current cte has
-	ConsumerCount int
-}
-
-// Restore implements Node interface
-func (c *CommonTableExpression) Restore(ctx *format.RestoreCtx) error {
-	ctx.WriteName(c.Name.String())
-	if c.IsRecursive {
-		// If the CTE is recursive, we should make it visible for the CTE's query.
-		// Otherwise, we should put it to stack after building the CTE's query.
-		ctx.RecordCTEName(c.Name.L)
-	}
-	if len(c.ColNameList) > 0 {
-		ctx.WritePlain(" (")
-		for j, name := range c.ColNameList {
-			if j != 0 {
-				ctx.WritePlain(", ")
-			}
-			ctx.WriteName(name.String())
-		}
-		ctx.WritePlain(")")
-	}
-	ctx.WriteKeyWord(" AS ")
-	err := c.Query.Restore(ctx)
-	if err != nil {
-		return err
-	}
-	if !c.IsRecursive {
-		ctx.RecordCTEName(c.Name.L)
-	}
-	return nil
-}
-
-// Accept implements Node interface
-func (c *CommonTableExpression) Accept(v Visitor) (Node, bool) {
-	newNode, skipChildren := v.Enter(c)
-	if skipChildren {
-		return v.Leave(newNode)
-	}
-
-	node, ok := c.Query.Accept(v)
-	if !ok {
-		return c, false
-	}
-	c.Query = node.(*SubqueryExpr)
-	return v.Leave(c)
 }
 
 type WithClause struct {
@@ -1165,8 +1106,6 @@ type SelectStmt struct {
 	// Lists is filled only when Kind == SelectStmtKindValues
 	Lists []*RowExpr
 	With  *WithClause
-	// AsViewSchema indicates if this stmt provides the schema for the view. It is only used when creating the view
-	AsViewSchema bool
 }
 
 func (*SelectStmt) resultSet() {}
@@ -1180,8 +1119,29 @@ func (n *WithClause) Restore(ctx *format.RestoreCtx) error {
 		if i != 0 {
 			ctx.WritePlain(", ")
 		}
-		if err := cte.Restore(ctx); err != nil {
+		ctx.WriteName(cte.Name.String())
+		if n.IsRecursive {
+			// If the CTE is recursive, we should make it visible for the CTE's query.
+			// Otherwise, we should put it to stack after building the CTE's query.
+			ctx.CTENames = append(ctx.CTENames, cte.Name.L)
+		}
+		if len(cte.ColNameList) > 0 {
+			ctx.WritePlain(" (")
+			for j, name := range cte.ColNameList {
+				if j != 0 {
+					ctx.WritePlain(", ")
+				}
+				ctx.WriteName(name.String())
+			}
+			ctx.WritePlain(")")
+		}
+		ctx.WriteKeyWord(" AS ")
+		err := cte.Query.Restore(ctx)
+		if err != nil {
 			return err
+		}
+		if !n.IsRecursive {
+			ctx.CTENames = append(ctx.CTENames, cte.Name.L)
 		}
 	}
 	ctx.WritePlain(" ")
@@ -1195,9 +1155,11 @@ func (n *WithClause) Accept(v Visitor) (Node, bool) {
 	}
 
 	for _, cte := range n.CTEs {
-		if _, ok := cte.Accept(v); !ok {
+		node, ok := cte.Query.Accept(v)
+		if !ok {
 			return n, false
 		}
+		cte.Query = node.(*SubqueryExpr)
 	}
 	return v.Leave(n)
 }
@@ -1205,7 +1167,10 @@ func (n *WithClause) Accept(v Visitor) (Node, bool) {
 // Restore implements Node interface.
 func (n *SelectStmt) Restore(ctx *format.RestoreCtx) error {
 	if n.WithBeforeBraces {
-		defer ctx.RestoreCTEFunc()() //nolint: all_revive
+		l := len(ctx.CTENames)
+		defer func() {
+			ctx.CTENames = ctx.CTENames[:l]
+		}()
 		err := n.With.Restore(ctx)
 		if err != nil {
 			return err
@@ -1218,7 +1183,6 @@ func (n *SelectStmt) Restore(ctx *format.RestoreCtx) error {
 		}()
 	}
 	if !n.WithBeforeBraces && n.With != nil {
-		defer ctx.RestoreCTEFunc()() //nolint: all_revive
 		err := n.With.Restore(ctx)
 		if err != nil {
 			return err
@@ -1280,24 +1244,16 @@ func (n *SelectStmt) Restore(ctx *format.RestoreCtx) error {
 				if i != 0 {
 					ctx.WritePlain(",")
 				}
-				if ctx.Flags.HasRestoreForNonPrepPlanCache() && len(field.OriginalText()) > 0 {
-					ctx.WritePlain(field.OriginalText())
-				} else {
-					if err := field.Restore(ctx); err != nil {
-						return errors.Annotatef(err, "An error occurred while restore SelectStmt.Fields[%d]", i)
-					}
+				if err := field.Restore(ctx); err != nil {
+					return errors.Annotatef(err, "An error occurred while restore SelectStmt.Fields[%d]", i)
 				}
 			}
 		}
 
 		if n.From != nil {
 			ctx.WriteKeyWord(" FROM ")
-			if ctx.Flags.HasRestoreForNonPrepPlanCache() && len(n.From.OriginalText()) > 0 {
-				ctx.WritePlain(n.From.OriginalText())
-			} else {
-				if err := n.From.Restore(ctx); err != nil {
-					return errors.Annotate(err, "An error occurred while restore SelectStmt.From")
-				}
+			if err := n.From.Restore(ctx); err != nil {
+				return errors.Annotate(err, "An error occurred while restore SelectStmt.From")
 			}
 		}
 
@@ -1557,19 +1513,19 @@ type SetOprSelectList struct {
 	With             *WithClause
 	AfterSetOperator *SetOprType
 	Selects          []Node
-	Limit            *Limit
-	OrderBy          *OrderByClause
 }
 
 // Restore implements Node interface.
 func (n *SetOprSelectList) Restore(ctx *format.RestoreCtx) error {
 	if n.With != nil {
-		defer ctx.RestoreCTEFunc()() //nolint: all_revive
+		l := len(ctx.CTENames)
+		defer func() {
+			ctx.CTENames = ctx.CTENames[:l]
+		}()
 		if err := n.With.Restore(ctx); err != nil {
 			return errors.Annotate(err, "An error occurred while restore SetOprSelectList.With")
 		}
 	}
-
 	for i, stmt := range n.Selects {
 		switch selectStmt := stmt.(type) {
 		case *SelectStmt:
@@ -1589,20 +1545,6 @@ func (n *SetOprSelectList) Restore(ctx *format.RestoreCtx) error {
 				return err
 			}
 			ctx.WritePlain(")")
-		}
-	}
-
-	if n.OrderBy != nil {
-		ctx.WritePlain(" ")
-		if err := n.OrderBy.Restore(ctx); err != nil {
-			return errors.Annotate(err, "An error occurred while restore SetOprSelectList.OrderBy")
-		}
-	}
-
-	if n.Limit != nil {
-		ctx.WritePlain(" ")
-		if err := n.Limit.Restore(ctx); err != nil {
-			return errors.Annotate(err, "An error occurred while restore SetOprSelectList.Limit")
 		}
 	}
 	return nil
@@ -1628,20 +1570,6 @@ func (n *SetOprSelectList) Accept(v Visitor) (Node, bool) {
 			return n, false
 		}
 		n.Selects[i] = node
-	}
-	if n.OrderBy != nil {
-		node, ok := n.OrderBy.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.OrderBy = node.(*OrderByClause)
-	}
-	if n.Limit != nil {
-		node, ok := n.Limit.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.Limit = node.(*Limit)
 	}
 	return v.Leave(n)
 }
@@ -1694,9 +1622,12 @@ func (*SetOprStmt) resultSet() {}
 // Restore implements Node interface.
 func (n *SetOprStmt) Restore(ctx *format.RestoreCtx) error {
 	if n.With != nil {
-		defer ctx.RestoreCTEFunc()() //nolint: all_revive
+		l := len(ctx.CTENames)
+		defer func() {
+			ctx.CTENames = ctx.CTENames[:l]
+		}()
 		if err := n.With.Restore(ctx); err != nil {
-			return errors.Annotate(err, "An error occurred while restore SetOprStmt.With")
+			return errors.Annotate(err, "An error occurred while restore UnionStmt.With")
 		}
 	}
 	if n.IsInBraces {
@@ -1847,37 +1778,20 @@ func (n *ColumnNameOrUserVar) Accept(v Visitor) (node Node, ok bool) {
 	return v.Leave(n)
 }
 
-type FileLocRefTp int
-
-const (
-	// FileLocServerOrRemote is used when there's no keywords in SQL, which means the data file should be located on the
-	// tidb-server or on remote storage (S3 for example).
-	FileLocServerOrRemote FileLocRefTp = iota
-	// FileLocClient is used when there's LOCAL keyword in SQL, which means the data file should be located on the MySQL
-	// client.
-	FileLocClient
-)
-
 // LoadDataStmt is a statement to load data from a specified file, then insert this rows into an existing table.
 // See https://dev.mysql.com/doc/refman/5.7/en/load-data.html
-// in TiDB we extend the syntax to use LOAD DATA as a more general way to import data, see
-// https://github.com/pingcap/tidb/issues/40499
 type LoadDataStmt struct {
 	dmlNode
 
-	LowPriority       bool
-	FileLocRef        FileLocRefTp
+	IsLocal           bool
 	Path              string
-	Format            *string
 	OnDuplicate       OnDuplicateKeyHandlingType
 	Table             *TableName
-	Charset           *string
 	Columns           []*ColumnName
 	FieldsInfo        *FieldsClause
 	LinesInfo         *LinesClause
-	IgnoreLines       *uint64
+	IgnoreLines       uint64
 	ColumnAssignments []*Assignment
-	Options           []*LoadDataOpt
 
 	ColumnsAndUserVars []*ColumnNameOrUserVar
 }
@@ -1885,20 +1799,11 @@ type LoadDataStmt struct {
 // Restore implements Node interface.
 func (n *LoadDataStmt) Restore(ctx *format.RestoreCtx) error {
 	ctx.WriteKeyWord("LOAD DATA ")
-	if n.LowPriority {
-		ctx.WriteKeyWord("LOW_PRIORITY ")
-	}
-	switch n.FileLocRef {
-	case FileLocServerOrRemote:
-	case FileLocClient:
+	if n.IsLocal {
 		ctx.WriteKeyWord("LOCAL ")
 	}
 	ctx.WriteKeyWord("INFILE ")
 	ctx.WriteString(n.Path)
-	if n.Format != nil {
-		ctx.WriteKeyWord(" FORMAT ")
-		ctx.WriteString(*n.Format)
-	}
 	if n.OnDuplicate == OnDuplicateKeyHandlingReplace {
 		ctx.WriteKeyWord(" REPLACE")
 	} else if n.OnDuplicate == OnDuplicateKeyHandlingIgnore {
@@ -1908,19 +1813,11 @@ func (n *LoadDataStmt) Restore(ctx *format.RestoreCtx) error {
 	if err := n.Table.Restore(ctx); err != nil {
 		return errors.Annotate(err, "An error occurred while restore LoadDataStmt.Table")
 	}
-	if n.Charset != nil {
-		ctx.WriteKeyWord(" CHARACTER SET ")
-		ctx.WritePlain(*n.Charset)
-	}
-	if n.FieldsInfo != nil {
-		n.FieldsInfo.Restore(ctx)
-	}
-	if n.LinesInfo != nil {
-		n.LinesInfo.Restore(ctx)
-	}
-	if n.IgnoreLines != nil {
+	n.FieldsInfo.Restore(ctx)
+	n.LinesInfo.Restore(ctx)
+	if n.IgnoreLines != 0 {
 		ctx.WriteKeyWord(" IGNORE ")
-		ctx.WritePlainf("%d", *n.IgnoreLines)
+		ctx.WritePlainf("%d", n.IgnoreLines)
 		ctx.WriteKeyWord(" LINES")
 	}
 	if len(n.ColumnsAndUserVars) != 0 {
@@ -1945,19 +1842,6 @@ func (n *LoadDataStmt) Restore(ctx *format.RestoreCtx) error {
 			ctx.WritePlain(" ")
 			if err := assign.Restore(ctx); err != nil {
 				return errors.Annotate(err, "An error occurred while restore LoadDataStmt.ColumnAssignments")
-			}
-		}
-	}
-
-	if len(n.Options) > 0 {
-		ctx.WriteKeyWord(" WITH")
-		for i, option := range n.Options {
-			if i != 0 {
-				ctx.WritePlain(",")
-			}
-			ctx.WritePlain(" ")
-			if err := option.Restore(ctx); err != nil {
-				return errors.Annotatef(err, "An error occurred while restore LoadDataStmt.Options")
 			}
 		}
 	}
@@ -2003,30 +1887,10 @@ func (n *LoadDataStmt) Accept(v Visitor) (Node, bool) {
 	return v.Leave(n)
 }
 
-type LoadDataOpt struct {
-	// Name is the name of the option, will be converted to lower case during parse.
-	Name string
-	// only literal is allowed, we use ExprNode to support negative number
-	Value ExprNode
-}
-
-func (l *LoadDataOpt) Restore(ctx *format.RestoreCtx) error {
-	if l.Value == nil {
-		ctx.WritePlain(l.Name)
-	} else {
-		ctx.WritePlain(l.Name + "=")
-		if err := l.Value.Restore(ctx); err != nil {
-			return errors.Annotatef(err, "An error occurred while restore LoadDataOpt")
-		}
-	}
-	return nil
-}
-
 const (
 	Terminated = iota
 	Enclosed
 	Escaped
-	DefinedNullBy
 )
 
 type FieldItem struct {
@@ -2037,41 +1901,34 @@ type FieldItem struct {
 
 // FieldsClause represents fields references clause in load data statement.
 type FieldsClause struct {
-	Terminated           *string
-	Enclosed             *string // length always <= 1 if not nil, see parser.y
-	Escaped              *string // length always <= 1 if not nil, see parser.y
-	OptEnclosed          bool
-	DefinedNullBy        *string
-	NullValueOptEnclosed bool
+	Terminated  string
+	Enclosed    byte
+	Escaped     byte
+	OptEnclosed bool
 }
 
 // Restore for FieldsClause
 func (n *FieldsClause) Restore(ctx *format.RestoreCtx) error {
-	if n.Terminated == nil && n.Enclosed == nil && n.Escaped == nil && n.DefinedNullBy == nil {
-		return nil
-	}
-
-	ctx.WriteKeyWord(" FIELDS")
-	if n.Terminated != nil {
-		ctx.WriteKeyWord(" TERMINATED BY ")
-		ctx.WriteString(*n.Terminated)
-	}
-	if n.Enclosed != nil {
-		if n.OptEnclosed {
-			ctx.WriteKeyWord(" OPTIONALLY")
+	if n.Terminated != "\t" || n.Escaped != '\\' {
+		ctx.WriteKeyWord(" FIELDS")
+		if n.Terminated != "\t" {
+			ctx.WriteKeyWord(" TERMINATED BY ")
+			ctx.WriteString(n.Terminated)
 		}
-		ctx.WriteKeyWord(" ENCLOSED BY ")
-		ctx.WriteString(*n.Enclosed)
-	}
-	if n.Escaped != nil {
-		ctx.WriteKeyWord(" ESCAPED BY ")
-		ctx.WriteString(*n.Escaped)
-	}
-	if n.DefinedNullBy != nil {
-		ctx.WriteKeyWord(" DEFINED NULL BY ")
-		ctx.WriteString(*n.DefinedNullBy)
-		if n.NullValueOptEnclosed {
-			ctx.WriteKeyWord(" OPTIONALLY ENCLOSED")
+		if n.Enclosed != 0 {
+			if n.OptEnclosed {
+				ctx.WriteKeyWord(" OPTIONALLY")
+			}
+			ctx.WriteKeyWord(" ENCLOSED BY ")
+			ctx.WriteString(string(n.Enclosed))
+		}
+		if n.Escaped != '\\' {
+			ctx.WriteKeyWord(" ESCAPED BY ")
+			if n.Escaped == 0 {
+				ctx.WritePlain("''")
+			} else {
+				ctx.WriteString(string(n.Escaped))
+			}
 		}
 	}
 	return nil
@@ -2079,148 +1936,24 @@ func (n *FieldsClause) Restore(ctx *format.RestoreCtx) error {
 
 // LinesClause represents lines references clause in load data statement.
 type LinesClause struct {
-	Starting   *string
-	Terminated *string
+	Starting   string
+	Terminated string
 }
 
 // Restore for LinesClause
 func (n *LinesClause) Restore(ctx *format.RestoreCtx) error {
-	if n.Starting == nil && n.Terminated == nil {
-		return nil
-	}
-	ctx.WriteKeyWord(" LINES")
-	if n.Starting != nil {
-		ctx.WriteKeyWord(" STARTING BY ")
-		ctx.WriteString(*n.Starting)
-	}
-	if n.Terminated != nil {
-		ctx.WriteKeyWord(" TERMINATED BY ")
-		ctx.WriteString(*n.Terminated)
-	}
-	return nil
-}
-
-// ImportIntoStmt represents a IMPORT INTO statement node.
-// this statement is used to import data into TiDB using lightning local mode.
-// see  https://github.com/pingcap/tidb/issues/42930
-type ImportIntoStmt struct {
-	dmlNode
-
-	Table              *TableName
-	ColumnsAndUserVars []*ColumnNameOrUserVar
-	ColumnAssignments  []*Assignment
-	Path               string
-	Format             *string
-	Options            []*LoadDataOpt
-	Select             ResultSetNode
-}
-
-var _ SensitiveStmtNode = &ImportIntoStmt{}
-
-// Restore implements Node interface.
-func (n *ImportIntoStmt) Restore(ctx *format.RestoreCtx) error {
-	ctx.WriteKeyWord("IMPORT INTO ")
-	if err := n.Table.Restore(ctx); err != nil {
-		return errors.Annotate(err, "An error occurred while restore ImportIntoStmt.Table")
-	}
-	if len(n.ColumnsAndUserVars) != 0 {
-		ctx.WritePlain(" (")
-		for i, c := range n.ColumnsAndUserVars {
-			if i != 0 {
-				ctx.WritePlain(",")
-			}
-			if err := c.Restore(ctx); err != nil {
-				return errors.Annotate(err, "An error occurred while restore ImportIntoStmt.ColumnsAndUserVars")
-			}
+	if n.Starting != "" || n.Terminated != "\n" {
+		ctx.WriteKeyWord(" LINES")
+		if n.Starting != "" {
+			ctx.WriteKeyWord(" STARTING BY ")
+			ctx.WriteString(n.Starting)
 		}
-		ctx.WritePlain(")")
-	}
-
-	if n.ColumnAssignments != nil {
-		ctx.WriteKeyWord(" SET")
-		for i, assign := range n.ColumnAssignments {
-			if i != 0 {
-				ctx.WritePlain(",")
-			}
-			ctx.WritePlain(" ")
-			if err := assign.Restore(ctx); err != nil {
-				return errors.Annotate(err, "An error occurred while restore ImportIntoStmt.ColumnAssignments")
-			}
-		}
-	}
-	ctx.WriteKeyWord(" FROM ")
-	if n.Select != nil {
-		if err := n.Select.Restore(ctx); err != nil {
-			return errors.Annotate(err, "An error occurred while restore ImportIntoStmt.Select")
-		}
-	} else {
-		ctx.WriteString(n.Path)
-		if n.Format != nil {
-			ctx.WriteKeyWord(" FORMAT ")
-			ctx.WriteString(*n.Format)
-		}
-	}
-
-	if len(n.Options) > 0 {
-		ctx.WriteKeyWord(" WITH")
-		for i, option := range n.Options {
-			if i != 0 {
-				ctx.WritePlain(",")
-			}
-			ctx.WritePlain(" ")
-			if err := option.Restore(ctx); err != nil {
-				return errors.Annotatef(err, "An error occurred while restore ImportIntoStmt.Options")
-			}
+		if n.Terminated != "\n" {
+			ctx.WriteKeyWord(" TERMINATED BY ")
+			ctx.WriteString(n.Terminated)
 		}
 	}
 	return nil
-}
-
-// Accept implements Node Accept interface.
-func (n *ImportIntoStmt) Accept(v Visitor) (Node, bool) {
-	newNode, skipChildren := v.Enter(n)
-	if skipChildren {
-		return v.Leave(newNode)
-	}
-	n = newNode.(*ImportIntoStmt)
-	if n.Table != nil {
-		node, ok := n.Table.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.Table = node.(*TableName)
-	}
-
-	for i, cuVars := range n.ColumnsAndUserVars {
-		node, ok := cuVars.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.ColumnsAndUserVars[i] = node.(*ColumnNameOrUserVar)
-	}
-	for i, assignment := range n.ColumnAssignments {
-		node, ok := assignment.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.ColumnAssignments[i] = node.(*Assignment)
-	}
-	if n.Select != nil {
-		node, ok := n.Select.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.Select = node.(ResultSetNode)
-	}
-	return v.Leave(n)
-}
-
-func (n *ImportIntoStmt) SecureText() string {
-	redactedStmt := *n
-	redactedStmt.Path = RedactURL(n.Path)
-	var sb strings.Builder
-	_ = redactedStmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb))
-	return sb.String()
 }
 
 // CallStmt represents a call procedure query node.
@@ -2273,7 +2006,7 @@ type InsertStmt struct {
 	Table       *TableRefsClause
 	Columns     []*ColumnName
 	Lists       [][]ExprNode
-	Setlist     bool
+	Setlist     []*Assignment
 	Priority    mysql.PriorityEnum
 	OnDuplicate []*Assignment
 	Select      ResultSetNode
@@ -2327,60 +2060,34 @@ func (n *InsertStmt) Restore(ctx *format.RestoreCtx) error {
 		}
 		ctx.WritePlain(")")
 	}
-	if n.Setlist {
-		if len(n.Lists) != 1 {
-			return errors.Errorf("Expect len(InsertStmt.Lists)[%d] == 1 for SET x=y", len(n.Lists))
-		}
-		if len(n.Lists[0]) != len(n.Columns) {
-			return errors.Errorf("Expect len(InsertStmt.Columns)[%d] == len(InsertStmt.Lists[0])[%d] for SET x=y", len(n.Columns), len(n.Lists[0]))
-		}
-		ctx.WriteKeyWord(" SET ")
-		for i, v := range n.Lists[0] {
+	if n.Columns != nil {
+		ctx.WritePlain(" (")
+		for i, v := range n.Columns {
 			if i != 0 {
 				ctx.WritePlain(",")
 			}
-			v := &Assignment{
-				Column: n.Columns[i],
-				Expr:   v,
-			}
 			if err := v.Restore(ctx); err != nil {
-				return errors.Annotatef(err, "An error occurred while restore InsertStmt.Set (Columns = Expr)[%d]", i)
+				return errors.Annotatef(err, "An error occurred while restore InsertStmt.Columns[%d]", i)
 			}
 		}
-	} else {
-		if n.Columns != nil {
-			ctx.WritePlain(" (")
-			for i, v := range n.Columns {
-				if i != 0 {
+		ctx.WritePlain(")")
+	}
+	if n.Lists != nil {
+		ctx.WriteKeyWord(" VALUES ")
+		for i, row := range n.Lists {
+			if i != 0 {
+				ctx.WritePlain(",")
+			}
+			ctx.WritePlain("(")
+			for j, v := range row {
+				if j != 0 {
 					ctx.WritePlain(",")
 				}
-				if ctx.Flags.HasRestoreForNonPrepPlanCache() && len(v.OriginalText()) > 0 {
-					ctx.WritePlain(v.OriginalText())
-				} else {
-					if err := v.Restore(ctx); err != nil {
-						return errors.Annotatef(err, "An error occurred while restore InsertStmt.Columns[%d]", i)
-					}
+				if err := v.Restore(ctx); err != nil {
+					return errors.Annotatef(err, "An error occurred while restore InsertStmt.Lists[%d][%d]", i, j)
 				}
 			}
 			ctx.WritePlain(")")
-		}
-		if n.Lists != nil {
-			ctx.WriteKeyWord(" VALUES ")
-			for i, row := range n.Lists {
-				if i != 0 {
-					ctx.WritePlain(",")
-				}
-				ctx.WritePlain("(")
-				for j, v := range row {
-					if j != 0 {
-						ctx.WritePlain(",")
-					}
-					if err := v.Restore(ctx); err != nil {
-						return errors.Annotatef(err, "An error occurred while restore InsertStmt.Lists[%d][%d]", i, j)
-					}
-				}
-				ctx.WritePlain(")")
-			}
 		}
 	}
 	if n.Select != nil {
@@ -2392,6 +2099,17 @@ func (n *InsertStmt) Restore(ctx *format.RestoreCtx) error {
 			}
 		default:
 			return errors.Errorf("Incorrect type for InsertStmt.Select: %T", v)
+		}
+	}
+	if n.Setlist != nil {
+		ctx.WriteKeyWord(" SET ")
+		for i, v := range n.Setlist {
+			if i != 0 {
+				ctx.WritePlain(",")
+			}
+			if err := v.Restore(ctx); err != nil {
+				return errors.Annotatef(err, "An error occurred while restore InsertStmt.Setlist[%d]", i)
+			}
 		}
 	}
 	if n.OnDuplicate != nil {
@@ -2447,6 +2165,13 @@ func (n *InsertStmt) Accept(v Visitor) (Node, bool) {
 			n.Lists[i][j] = node.(ExprNode)
 		}
 	}
+	for i, val := range n.Setlist {
+		node, ok := val.Accept(v)
+		if !ok {
+			return n, false
+		}
+		n.Setlist[i] = node.(*Assignment)
+	}
 	for i, val := range n.OnDuplicate {
 		node, ok := val.Accept(v)
 		if !ok {
@@ -2455,42 +2180,6 @@ func (n *InsertStmt) Accept(v Visitor) (Node, bool) {
 		n.OnDuplicate[i] = node.(*Assignment)
 	}
 	return v.Leave(n)
-}
-
-// WhereExpr implements ShardableDMLStmt interface.
-func (n *InsertStmt) WhereExpr() ExprNode {
-	if n.Select == nil {
-		return nil
-	}
-	s, ok := n.Select.(*SelectStmt)
-	if !ok {
-		return nil
-	}
-	return s.Where
-}
-
-// SetWhereExpr implements ShardableDMLStmt interface.
-func (n *InsertStmt) SetWhereExpr(e ExprNode) {
-	if n.Select == nil {
-		return
-	}
-	s, ok := n.Select.(*SelectStmt)
-	if !ok {
-		return
-	}
-	s.Where = e
-}
-
-// TableRefsJoin implements ShardableDMLStmt interface.
-func (n *InsertStmt) TableRefsJoin() (*Join, bool) {
-	if n.Select == nil {
-		return nil, false
-	}
-	s, ok := n.Select.(*SelectStmt)
-	if !ok {
-		return nil, false
-	}
-	return s.From.TableRefs, true
 }
 
 // DeleteStmt is a statement to delete rows from table.
@@ -2518,7 +2207,10 @@ type DeleteStmt struct {
 // Restore implements Node interface.
 func (n *DeleteStmt) Restore(ctx *format.RestoreCtx) error {
 	if n.With != nil {
-		defer ctx.RestoreCTEFunc()() //nolint: all_revive
+		l := len(ctx.CTENames)
+		defer func() {
+			ctx.CTENames = ctx.CTENames[:l]
+		}()
 		err := n.With.Restore(ctx)
 		if err != nil {
 			return err
@@ -2659,97 +2351,6 @@ func (n *DeleteStmt) Accept(v Visitor) (Node, bool) {
 	return v.Leave(n)
 }
 
-// WhereExpr implements ShardableDMLStmt interface.
-func (n *DeleteStmt) WhereExpr() ExprNode {
-	return n.Where
-}
-
-// SetWhereExpr implements ShardableDMLStmt interface.
-func (n *DeleteStmt) SetWhereExpr(e ExprNode) {
-	n.Where = e
-}
-
-// TableRefsJoin implements ShardableDMLStmt interface.
-func (n *DeleteStmt) TableRefsJoin() (*Join, bool) {
-	return n.TableRefs.TableRefs, true
-}
-
-const (
-	NoDryRun = iota
-	DryRunQuery
-	DryRunSplitDml
-)
-
-type ShardableDMLStmt = interface {
-	StmtNode
-	WhereExpr() ExprNode
-	SetWhereExpr(ExprNode)
-	// TableRefsJoin returns the table refs in the statement.
-	TableRefsJoin() (refs *Join, ok bool)
-}
-
-var _ ShardableDMLStmt = &DeleteStmt{}
-var _ ShardableDMLStmt = &UpdateStmt{}
-var _ ShardableDMLStmt = &InsertStmt{}
-
-type NonTransactionalDMLStmt struct {
-	dmlNode
-
-	DryRun      int         // 0: no dry run, 1: dry run the query, 2: dry run split DMLs
-	ShardColumn *ColumnName // if it's nil, the handle column is automatically chosen for it
-	Limit       uint64
-	DMLStmt     ShardableDMLStmt
-}
-
-// Restore implements Node interface.
-func (n *NonTransactionalDMLStmt) Restore(ctx *format.RestoreCtx) error {
-	ctx.WriteKeyWord("BATCH ")
-	if n.ShardColumn != nil {
-		ctx.WriteKeyWord("ON ")
-		if err := n.ShardColumn.Restore(ctx); err != nil {
-			return errors.Trace(err)
-		}
-		ctx.WritePlain(" ")
-	}
-	ctx.WriteKeyWord("LIMIT ")
-	ctx.WritePlainf("%d ", n.Limit)
-	if n.DryRun == DryRunSplitDml {
-		ctx.WriteKeyWord("DRY RUN ")
-	}
-	if n.DryRun == DryRunQuery {
-		ctx.WriteKeyWord("DRY RUN QUERY ")
-	}
-	if err := n.DMLStmt.Restore(ctx); err != nil {
-		return errors.Trace(err)
-	}
-	return nil
-}
-
-// Accept implements Node Accept interface.
-func (n *NonTransactionalDMLStmt) Accept(v Visitor) (Node, bool) {
-	newNode, skipChildren := v.Enter(n)
-	if skipChildren {
-		return v.Leave(newNode)
-	}
-
-	n = newNode.(*NonTransactionalDMLStmt)
-	if n.ShardColumn != nil {
-		node, ok := n.ShardColumn.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.ShardColumn = node.(*ColumnName)
-	}
-	if n.DMLStmt != nil {
-		node, ok := n.DMLStmt.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.DMLStmt = node.(ShardableDMLStmt)
-	}
-	return v.Leave(n)
-}
-
 // UpdateStmt is a statement to update columns of existing rows in tables with new values.
 // See https://dev.mysql.com/doc/refman/5.7/en/update.html
 type UpdateStmt struct {
@@ -2770,7 +2371,10 @@ type UpdateStmt struct {
 // Restore implements Node interface.
 func (n *UpdateStmt) Restore(ctx *format.RestoreCtx) error {
 	if n.With != nil {
-		defer ctx.RestoreCTEFunc()() //nolint: all_revive
+		l := len(ctx.CTENames)
+		defer func() {
+			ctx.CTENames = ctx.CTENames[:l]
+		}()
 		err := n.With.Restore(ctx)
 		if err != nil {
 			return err
@@ -2897,21 +2501,6 @@ func (n *UpdateStmt) Accept(v Visitor) (Node, bool) {
 	return v.Leave(n)
 }
 
-// WhereExpr implements ShardableDMLStmt interface.
-func (n *UpdateStmt) WhereExpr() ExprNode {
-	return n.Where
-}
-
-// SetWhereExpr implements ShardableDMLStmt interface.
-func (n *UpdateStmt) SetWhereExpr(e ExprNode) {
-	n.Where = e
-}
-
-// TableRefsJoin implements ShardableDMLStmt interface.
-func (n *UpdateStmt) TableRefsJoin() (*Join, bool) {
-	return n.TableRefs.TableRefs, true
-}
-
 // Limit is the limit clause.
 type Limit struct {
 	node
@@ -2984,7 +2573,6 @@ const (
 	ShowGrants
 	ShowTriggers
 	ShowProcedureStatus
-	ShowFunctionStatus
 	ShowIndex
 	ShowProcessList
 	ShowCreateDatabase
@@ -2996,9 +2584,6 @@ const (
 	ShowStatsTopN
 	ShowStatsBuckets
 	ShowStatsHealthy
-	ShowStatsLocked
-	ShowHistogramsInFlight
-	ShowColumnStatsUsage
 	ShowPlugins
 	ShowProfile
 	ShowProfiles
@@ -3006,7 +2591,6 @@ const (
 	ShowPrivileges
 	ShowErrors
 	ShowBindings
-	ShowBindingCacheStatus
 	ShowPumpStatus
 	ShowDrainerStatus
 	ShowOpenTables
@@ -3023,12 +2607,6 @@ const (
 	ShowPlacementForTable
 	ShowPlacementForPartition
 	ShowPlacementLabels
-	ShowSessionStates
-	ShowCreateResourceGroup
-	ShowImportJobs
-	ShowCreateProcedure
-	ShowBinlogStatus
-	ShowReplicaStatus
 )
 
 const (
@@ -3049,35 +2627,27 @@ const (
 type ShowStmt struct {
 	dmlNode
 
-	Tp     ShowStmtType // Databases/Tables/Columns/....
-	DBName string
-	Table  *TableName // Used for showing columns.
-	// Procedure's naming method is consistent with the table name
-	Procedure         *TableName
-	Partition         model.CIStr // Used for showing partition.
-	Column            *ColumnName // Used for `desc table column`.
-	IndexName         model.CIStr
-	ResourceGroupName string // used for showing resource group
-	Flag              int    // Some flag parsed from sql, such as FULL.
-	Full              bool
-	User              *auth.UserIdentity   // Used for show grants/create user.
-	Roles             []*auth.RoleIdentity // Used for show grants .. using
-	IfNotExists       bool                 // Used for `show create database if not exists`
-	Extended          bool                 // Used for `show extended columns from ...`
-	Limit             *Limit               // Used for partial Show STMTs to limit Result Set row numbers.
-
-	CountWarningsOrErrors bool // Used for showing count(*) warnings | errors
+	Tp          ShowStmtType // Databases/Tables/Columns/....
+	DBName      string
+	Table       *TableName  // Used for showing columns.
+	Partition   model.CIStr // Used for showing partition.
+	Column      *ColumnName // Used for `desc table column`.
+	IndexName   model.CIStr
+	Flag        int // Some flag parsed from sql, such as FULL.
+	Full        bool
+	User        *auth.UserIdentity   // Used for show grants/create user.
+	Roles       []*auth.RoleIdentity // Used for show grants .. using
+	IfNotExists bool                 // Used for `show create database if not exists`
+	Extended    bool                 // Used for `show extended columns from ...`
 
 	// GlobalScope is used by `show variables` and `show bindings`
 	GlobalScope bool
-	Pattern     *PatternLikeOrIlikeExpr
+	Pattern     *PatternLikeExpr
 	Where       ExprNode
 
 	ShowProfileTypes []int  // Used for `SHOW PROFILE` syntax
 	ShowProfileArgs  *int64 // Used for `SHOW PROFILE` syntax
 	ShowProfileLimit *Limit // Used for `SHOW PROFILE` syntax
-
-	ImportJobID *int64 // Used for `SHOW IMPORT JOB <ID>` syntax
 }
 
 // Restore implements Node interface.
@@ -3118,17 +2688,10 @@ func (n *ShowStmt) Restore(ctx *format.RestoreCtx) error {
 
 	ctx.WriteKeyWord("SHOW ")
 	switch n.Tp {
-	case ShowBinlogStatus:
-		ctx.WriteKeyWord("BINARY LOG STATUS")
 	case ShowCreateTable:
 		ctx.WriteKeyWord("CREATE TABLE ")
 		if err := n.Table.Restore(ctx); err != nil {
 			return errors.Annotate(err, "An error occurred while restore ShowStmt.Table")
-		}
-	case ShowCreateProcedure:
-		ctx.WriteKeyWord("CREATE PROCEDURE ")
-		if err := n.Procedure.Restore(ctx); err != nil {
-			return errors.Annotate(err, "An error occurred while restore ShowStmt.Procedure")
 		}
 	case ShowCreateView:
 		ctx.WriteKeyWord("CREATE VIEW ")
@@ -3149,9 +2712,6 @@ func (n *ShowStmt) Restore(ctx *format.RestoreCtx) error {
 	case ShowCreatePlacementPolicy:
 		ctx.WriteKeyWord("CREATE PLACEMENT POLICY ")
 		ctx.WriteName(n.DBName)
-	case ShowCreateResourceGroup:
-		ctx.WriteKeyWord("CREATE RESOURCE GROUP ")
-		ctx.WriteName(n.ResourceGroupName)
 	case ShowCreateUser:
 		ctx.WriteKeyWord("CREATE USER ")
 		if err := n.User.Restore(ctx); err != nil {
@@ -3191,11 +2751,6 @@ func (n *ShowStmt) Restore(ctx *format.RestoreCtx) error {
 		if err := restoreShowLikeOrWhereOpt(); err != nil {
 			return err
 		}
-	case ShowStatsLocked:
-		ctx.WriteKeyWord("STATS_LOCKED")
-		if err := restoreShowLikeOrWhereOpt(); err != nil {
-			return err
-		}
 	case ShowStatsHistograms:
 		ctx.WriteKeyWord("STATS_HISTOGRAMS")
 		if err := restoreShowLikeOrWhereOpt(); err != nil {
@@ -3213,16 +2768,6 @@ func (n *ShowStmt) Restore(ctx *format.RestoreCtx) error {
 		}
 	case ShowStatsHealthy:
 		ctx.WriteKeyWord("STATS_HEALTHY")
-		if err := restoreShowLikeOrWhereOpt(); err != nil {
-			return err
-		}
-	case ShowHistogramsInFlight:
-		ctx.WriteKeyWord("HISTOGRAMS_IN_FLIGHT")
-		if err := restoreShowLikeOrWhereOpt(); err != nil {
-			return err
-		}
-	case ShowColumnStatsUsage:
-		ctx.WriteKeyWord("COLUMN_STATS_USAGE")
 		if err := restoreShowLikeOrWhereOpt(); err != nil {
 			return err
 		}
@@ -3273,29 +2818,24 @@ func (n *ShowStmt) Restore(ctx *format.RestoreCtx) error {
 		ctx.WriteKeyWord("PRIVILEGES")
 	case ShowBuiltins:
 		ctx.WriteKeyWord("BUILTINS")
+	case ShowCreateImport:
+		ctx.WriteKeyWord("CREATE IMPORT ")
+		ctx.WriteName(n.DBName)
 	case ShowPlacementForDatabase:
 		ctx.WriteKeyWord("PLACEMENT FOR DATABASE ")
 		ctx.WriteName(n.DBName)
 	case ShowPlacementForTable:
 		ctx.WriteKeyWord("PLACEMENT FOR TABLE ")
 		if err := n.Table.Restore(ctx); err != nil {
-			return errors.Annotate(err, "An error occurred while restore ShowStmt.Table")
+			return errors.Annotate(err, "An error occurred while resotre ShowStmt.Table")
 		}
 	case ShowPlacementForPartition:
 		ctx.WriteKeyWord("PLACEMENT FOR TABLE ")
 		if err := n.Table.Restore(ctx); err != nil {
-			return errors.Annotate(err, "An error occurred while restore ShowStmt.Table")
+			return errors.Annotate(err, "An error occurred while resotre ShowStmt.Table")
 		}
 		ctx.WriteKeyWord(" PARTITION ")
 		ctx.WriteName(n.Partition.String())
-	case ShowImportJobs:
-		if n.ImportJobID != nil {
-			ctx.WriteKeyWord("IMPORT JOB ")
-			ctx.WritePlainf("%d", *n.ImportJobID)
-		} else {
-			ctx.WriteKeyWord("IMPORT JOBS")
-			restoreShowLikeOrWhereOpt()
-		}
 	// ShowTargetFilterable
 	default:
 		switch n.Tp {
@@ -3322,7 +2862,7 @@ func (n *ShowStmt) Restore(ctx *format.RestoreCtx) error {
 			// FROM or IN
 			ctx.WriteKeyWord("INDEX IN ")
 			if err := n.Table.Restore(ctx); err != nil {
-				return errors.Annotate(err, "An error occurred while restore ShowStmt.Table")
+				return errors.Annotate(err, "An error occurred while resotre ShowStmt.Table")
 			} // TODO: remember to check this case
 		case ShowColumns: // equivalent to SHOW FIELDS
 			if n.Extended {
@@ -3334,7 +2874,7 @@ func (n *ShowStmt) Restore(ctx *format.RestoreCtx) error {
 				// FROM or IN
 				ctx.WriteKeyWord(" IN ")
 				if err := n.Table.Restore(ctx); err != nil {
-					return errors.Annotate(err, "An error occurred while restore ShowStmt.Table")
+					return errors.Annotate(err, "An error occurred while resotre ShowStmt.Table")
 				}
 			}
 			restoreShowDatabaseNameOpt()
@@ -3355,8 +2895,6 @@ func (n *ShowStmt) Restore(ctx *format.RestoreCtx) error {
 			restoreShowDatabaseNameOpt()
 		case ShowProcedureStatus:
 			ctx.WriteKeyWord("PROCEDURE STATUS")
-		case ShowFunctionStatus:
-			ctx.WriteKeyWord("FUNCTION STATUS")
 		case ShowEvents:
 			ctx.WriteKeyWord("EVENTS")
 			restoreShowDatabaseNameOpt()
@@ -3369,8 +2907,6 @@ func (n *ShowStmt) Restore(ctx *format.RestoreCtx) error {
 				ctx.WriteKeyWord("SESSION ")
 			}
 			ctx.WriteKeyWord("BINDINGS")
-		case ShowBindingCacheStatus:
-			ctx.WriteKeyWord("BINDING_CACHE STATUS")
 		case ShowPumpStatus:
 			ctx.WriteKeyWord("PUMP STATUS")
 		case ShowDrainerStatus:
@@ -3380,7 +2916,7 @@ func (n *ShowStmt) Restore(ctx *format.RestoreCtx) error {
 		case ShowRegions:
 			ctx.WriteKeyWord("TABLE ")
 			if err := n.Table.Restore(ctx); err != nil {
-				return errors.Annotate(err, "An error occurred while restore ShowStmt.Table")
+				return errors.Annotate(err, "An error occurred while restore SplitIndexRegionStmt.Table")
 			}
 			if len(n.IndexName.L) > 0 {
 				ctx.WriteKeyWord(" INDEX ")
@@ -3394,7 +2930,7 @@ func (n *ShowStmt) Restore(ctx *format.RestoreCtx) error {
 		case ShowTableNextRowId:
 			ctx.WriteKeyWord("TABLE ")
 			if err := n.Table.Restore(ctx); err != nil {
-				return errors.Annotate(err, "An error occurred while restore ShowStmt.Table")
+				return errors.Annotate(err, "An error occurred while restore SplitIndexRegionStmt.Table")
 			}
 			ctx.WriteKeyWord(" NEXT_ROW_ID")
 			return nil
@@ -3408,10 +2944,6 @@ func (n *ShowStmt) Restore(ctx *format.RestoreCtx) error {
 			ctx.WriteKeyWord("PLACEMENT")
 		case ShowPlacementLabels:
 			ctx.WriteKeyWord("PLACEMENT LABELS")
-		case ShowSessionStates:
-			ctx.WriteKeyWord("SESSION_STATES")
-		case ShowReplicaStatus:
-			ctx.WriteKeyWord("REPLICA STATUS")
 		default:
 			return errors.New("Unknown ShowStmt type")
 		}
@@ -3446,7 +2978,7 @@ func (n *ShowStmt) Accept(v Visitor) (Node, bool) {
 		if !ok {
 			return n, false
 		}
-		n.Pattern = node.(*PatternLikeOrIlikeExpr)
+		n.Pattern = node.(*PatternLikeExpr)
 	}
 
 	if n.Where != nil {
@@ -3456,46 +2988,7 @@ func (n *ShowStmt) Accept(v Visitor) (Node, bool) {
 		}
 		n.Where = node.(ExprNode)
 	}
-	if n.Limit != nil {
-		node, ok := n.Limit.Accept(v)
-		if !ok {
-			return n, false
-		}
-		n.Limit = node.(*Limit)
-	}
 	return v.Leave(n)
-}
-
-// Allow limit result set for partial SHOW cmd
-func (n *ShowStmt) NeedLimitRSRow() bool {
-	switch n.Tp {
-	// Show statements need to have consistence behavior with MySQL Does
-	case ShowEngines, ShowDatabases, ShowTables, ShowColumns, ShowTableStatus, ShowWarnings,
-		ShowCharset, ShowVariables, ShowStatus, ShowCollation, ShowIndex, ShowPlugins:
-		return true
-	default:
-		// There are five classes of Show STMT.
-		// 1) The STMT Only return one row:
-		//    ShowCreateTable, ShowCreateView, ShowCreateUser, ShowCreateDatabase, ShowMasterStatus,
-		//
-		// 2) The STMT is a MySQL syntax extend, so just keep it behavior as before:
-		//    ShowCreateSequence, ShowCreatePlacementPolicy, ShowConfig, ShowStatsExtended,
-		//    ShowStatsMeta, ShowStatsHistograms, ShowStatsTopN, ShowStatsBuckets, ShowStatsHealthy
-		//    ShowHistogramsInFlight, ShowColumnStatsUsage, ShowBindings, ShowBindingCacheStatus,
-		//    ShowPumpStatus, ShowDrainerStatus, ShowAnalyzeStatus, ShowRegions, ShowBuiltins,
-		//    ShowTableNextRowId, ShowBackups, ShowRestores, ShowImports, ShowCreateImport, ShowPlacement
-		//    ShowPlacementForDatabase, ShowPlacementForTable, ShowPlacementForPartition, ShowPlacementLabels
-		//
-		// 3) There is corelated statements in MySQL, but no limit result set return number also.
-		//    ShowGrants, ShowProcessList, ShowPrivileges, ShowBuiltins, ShowTableNextRowId
-		//
-		// 4) There is corelated statements in MySQL, but it seems not recommand to use them and likely deprecte in the future.
-		//    ShowProfile, ShowProfiles
-		//
-		// 5) Below STMTs do not implement fetch logic.
-		//    ShowTriggers, ShowProcedureStatus, ShowEvents, ShowErrors, ShowOpenTables.
-		return false
-	}
 }
 
 // WindowSpec is the specification of a window.
@@ -3841,6 +3334,7 @@ func (n *SplitRegionStmt) Restore(ctx *format.RestoreCtx) error {
 		}
 		if n.SplitSyntaxOpt.HasPartition {
 			ctx.WriteKeyWord("PARTITION ")
+
 		}
 	}
 	ctx.WriteKeyWord("TABLE ")

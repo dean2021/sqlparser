@@ -15,7 +15,7 @@ package auth
 
 import (
 	"bytes"
-	"crypto/sha1" //nolint: gosec
+	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
 
@@ -40,7 +40,6 @@ import (
 //	         check(candidate_hash2==hash_stage2)
 //	         // this three steps are done in check_scramble()
 func CheckScrambledPassword(salt, hpwd, auth []byte) bool {
-	//nolint: gosec
 	crypt := sha1.New()
 	_, err := crypt.Write(salt)
 	terror.Log(errors.Trace(err))
@@ -60,30 +59,18 @@ func CheckScrambledPassword(salt, hpwd, auth []byte) bool {
 
 // Sha1Hash is an util function to calculate sha1 hash.
 func Sha1Hash(bs []byte) []byte {
-	//nolint: gosec
 	crypt := sha1.New()
 	_, err := crypt.Write(bs)
 	terror.Log(errors.Trace(err))
 	return crypt.Sum(nil)
 }
 
-// EncodePassword converts plaintext password(type is string) to hashed hex string.
+// EncodePassword converts plaintext password to hashed hex string.
 func EncodePassword(pwd string) string {
 	if len(pwd) == 0 {
 		return ""
 	}
 	hash1 := Sha1Hash([]byte(pwd))
-	hash2 := Sha1Hash(hash1)
-
-	return fmt.Sprintf("*%X", hash2)
-}
-
-// EncodePasswordBytes converts plaintext password(type is []byte) to hashed hex string.
-func EncodePasswordBytes(pwd []byte) string {
-	if len(pwd) == 0 {
-		return ""
-	}
-	hash1 := Sha1Hash(pwd)
 	hash2 := Sha1Hash(hash1)
 
 	return fmt.Sprintf("*%X", hash2)
