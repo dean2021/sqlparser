@@ -1,6 +1,6 @@
 .PHONY: all parser clean
 
-all: fmt parser
+all: clean fmt parser
 
 test: fmt parser
 	sh test.sh

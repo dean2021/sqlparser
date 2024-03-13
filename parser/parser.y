@@ -5175,6 +5175,10 @@ Expression:
 	{
 		$$ = &ast.BinaryOperationExpr{Op: opcode.LogicOr, L: $1, R: $3}
 	}
+|	logOr Expression %prec pipes
+	{
+		$$ = &ast.BinaryOperationExpr{Op: opcode.LogicOr, R: $2}
+	}
 |	Expression "XOR" Expression %prec xor
 	{
 		$$ = &ast.BinaryOperationExpr{Op: opcode.LogicXor, L: $1, R: $3}
@@ -5182,6 +5186,10 @@ Expression:
 |	Expression logAnd Expression %prec andand
 	{
 		$$ = &ast.BinaryOperationExpr{Op: opcode.LogicAnd, L: $1, R: $3}
+	}
+|	logAnd Expression %prec andand
+	{
+		$$ = &ast.BinaryOperationExpr{Op: opcode.LogicAnd, R: $2}
 	}
 |	"NOT" Expression %prec not
 	{
@@ -5297,9 +5305,17 @@ BoolPri:
 	{
 		$$ = &ast.IsNullExpr{Expr: $1, Not: !$2.(bool)}
 	}
+|	BoolPri CompareOp ColumnNameList %prec eq
+	{
+		$$ = &ast.BinaryOperationExpr{Op: $2.(opcode.Op), L: $1}
+	}
 |	BoolPri CompareOp PredicateExpr %prec eq
 	{
 		$$ = &ast.BinaryOperationExpr{Op: $2.(opcode.Op), L: $1, R: $3}
+	}
+|	BoolPri CompareOp %prec eq
+	{
+		$$ = &ast.BinaryOperationExpr{Op: $2.(opcode.Op), L: $1}
 	}
 |	BoolPri CompareOp AnyOrAll SubSelect %prec eq
 	{
@@ -13469,7 +13485,21 @@ DropSequenceStmt:
 CommonExpressionStmt:
 	Expression
 	{
-		$$ = &ast.CommonExpressionStmt{}
+		$$ = &ast.CommonExpressionStmt{
+			Expr: $1,
+		}
+	}
+|	ColumnNameList Expression
+	{
+		$$ = &ast.CommonExpressionStmt{
+			Expr: $2,
+		}
+	}
+|	Expression ColumnNameList
+	{
+		$$ = &ast.CommonExpressionStmt{
+			Expr: $1,
+		}
 	}
 
 /********************************************************************************************

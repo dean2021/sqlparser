@@ -14,7 +14,6 @@
 package ast
 
 import (
-	"fmt"
 	"github.com/dean2021/sqlparser/parser/auth"
 	"github.com/dean2021/sqlparser/parser/format"
 	"github.com/dean2021/sqlparser/parser/model"
@@ -1262,20 +1261,37 @@ func (n *DropSequenceStmt) Accept(v Visitor) (Node, bool) {
 	return v.Leave(n)
 }
 
+//type CommonExprNode struct {
+//	ExprNode
+//}
+//
+//func (n *CommonExprNode) Accept(v Visitor) (Node, bool) {
+//	newNode, skipChildren := v.Enter(n)
+//	if skipChildren {
+//		return v.Leave(newNode)
+//	}
+//
+//	return v.Leave(n)
+//}
+
 // CommonExpressionStmt is a statement to drop a Sequence.
 type CommonExpressionStmt struct {
 	ddlNode
+	Expr ExprNode
 }
 
 // Restore implements Node interface.
 func (n *CommonExpressionStmt) Restore(ctx *format.RestoreCtx) error {
 
-	fmt.Println("Restore")
 	return nil
 }
 
 // Accept implements Node Accept interface.
 func (n *CommonExpressionStmt) Accept(v Visitor) (Node, bool) {
+	newNode, skipChildren := v.Enter(n)
+	if skipChildren {
+		return v.Leave(newNode)
+	}
 
 	return v.Leave(n)
 }

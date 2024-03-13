@@ -307,6 +307,7 @@ func (s *Scanner) scan() (tok int, pos Pos, lit string) {
 	if unicode.IsSpace(ch0) {
 		ch0 = s.skipWhitespace()
 	}
+
 	pos = s.r.pos()
 	if s.r.eof() {
 		// when scanner meets EOF, the returned token should be 0,
@@ -326,6 +327,7 @@ func (s *Scanner) scan() (tok int, pos Pos, lit string) {
 		}
 		node = node.childs[ch0]
 		if node.fn != nil {
+			//fmt.Println(string(ch0))
 			return node.fn(s)
 		}
 		s.r.inc()
@@ -350,6 +352,7 @@ func startWithXx(s *Scanner) (tok int, pos Pos, lit string) {
 		}
 		return
 	}
+
 	s.r.updatePos(pos)
 	return scanIdentifier(s)
 }
@@ -660,7 +663,14 @@ func (s *Scanner) scanString() (tok int, pos Pos, lit string) {
 	tok, pos = stringLit, s.r.pos()
 	mb := lazyBuf{false, &s.r, &s.buf, &pos}
 	ending := s.r.readByte()
+
+	// todo hack
 	ch0 := s.r.peek()
+	if s.r.eof() {
+		tok = identifier
+		return
+	}
+
 	for !s.r.eof() {
 		if ch0 == ending {
 			s.r.inc()
@@ -673,6 +683,9 @@ func (s *Scanner) scanString() (tok int, pos Pos, lit string) {
 		} else if ch0 == '\\' && !s.sqlMode.HasNoBackslashEscapesMode() {
 			mb.setUseBuf(mb.r.data(&pos)[1:])
 			ch0 = handleEscape(s)
+			// TODO hack
+		} else if ch0 == ' ' {
+			return
 		}
 		mb.writeRune(ch0, s.r.w)
 		if !s.r.eof() {
@@ -762,6 +775,32 @@ func startWithNumber(s *Scanner) (tok int, pos Pos, lit string) {
 	if ch0 == '.' || ch0 == 'e' || ch0 == 'E' {
 		return s.scanFloat(&pos)
 	}
+	//fmt.Println(string(ch0))
+	//// TODO hack
+
+	//fmt.Println(string(ch0), pos.Offset)
+	//if ch0 == ')' || ch0 == '(' {
+	//	//s.r.inc()
+	//	//tok = intLit
+	//	//lit = "0"
+	//	//pos = s.r.pos()
+	//	//fmt.Println(pos.Col)
+	//	//s.r.updatePos(s.r.pos())
+	//
+	//	fmt.Println(pos.Offset)
+	//	//s.r.s[pos.Offset:]
+	//
+	//	//tok, pos, lit = s.scanString()
+	//	//return
+	//}
+	//if ch0 == '\'' || ch0 == '"' {
+	//	//		tok, pos, lit = s.scanString()
+	//	// 目前是把后半截当做字符串了,往前移动，然后把token设置为字符串
+	//	s.r.inc()
+	//	ch0 = s.r.peek()
+	//	//s.r.updatePos(s.r.pos())
+	//	tok = stringLit
+	//}
 
 	// Identifiers may begin with a digit but unless quoted may not consist solely of digits.
 	if !s.r.eof() && isIdentChar(ch0) {

@@ -27,6 +27,11 @@ func isDigit(ch rune) bool {
 }
 
 func isIdentChar(ch rune) bool {
+	// TODO hack
+	// 将单引号、双引号、右括号 当做ident char
+	if ch == '\'' || ch == '"' {
+		return true
+	}
 	return isLetter(ch) || isDigit(ch) || ch == '_' || ch == '$' || isIdentExtend(ch)
 }
 
@@ -94,7 +99,8 @@ func init() {
 	initTokenByte('%', int('%'))
 	initTokenByte(':', int(':'))
 	initTokenByte('|', int('|'))
-	initTokenByte('!', int('!'))
+	// TODO hack
+	//initTokenByte('!', int('!'))
 	initTokenByte('^', int('^'))
 	initTokenByte('~', int('~'))
 	initTokenByte('\\', int('\\'))
@@ -121,6 +127,7 @@ func init() {
 	initTokenFunc("*", startWithStar)
 	initTokenFunc("-", startWithDash)
 	initTokenFunc("#", startWithSharp)
+	// TODO hack
 	initTokenFunc("Xx", startWithXx)
 	initTokenFunc("Nn", startWithNn)
 	initTokenFunc("Bb", startWithBb)
@@ -129,6 +136,10 @@ func init() {
 	initTokenFunc("`", scanQuotedIdent)
 	initTokenFunc("0123456789", startWithNumber)
 	initTokenFunc("'\"", startString)
+
+	// 1' or 1=1
+	// 初始化是数字，但是可能是个字符串
+	// 下个字符是否是单引号
 }
 
 // isInTokenMap indicates whether the target string is contained in tokenMap.
