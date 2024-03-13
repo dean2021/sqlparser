@@ -69,6 +69,8 @@ func parse(sql string) (*ast.StmtNode, error) {
 
 func main() {
 
+	startTime := time.Now()
+
 	// ' OR '' = '
 	// 1' ORDER BY 1--+
 	// ' and 1 in (select min(name) from sysobjects where xtype = 'U' and name > '.') --
@@ -84,7 +86,7 @@ func main() {
 
 	p := parser.New()
 
-	stmts, _, err := p.Parse("1 or 1=1", "", "")
+	stmts, _, err := p.Parse("1 or 1 and 222 and xx", "", "")
 	if err != nil {
 		fmt.Println("解析错误:", err)
 		return
@@ -96,6 +98,9 @@ func main() {
 	//if v.isRisk {
 	//	fmt.Println("发现sql注入")
 	//}
+	endTime := time.Now()
+	elapsedTime := endTime.Sub(startTime)
+	fmt.Printf("代码执行耗时: %s \n", elapsedTime)
 
 	//scanner := parser.NewScanner(`' or 1=1`)
 	//scanner.LexLiteral()

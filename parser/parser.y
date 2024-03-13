@@ -925,6 +925,7 @@ import (
 	BindableStmt               "Statement that can be created binding on"
 	UpdateStmtNoWith           "Update statement without CTE clause"
 	HelpStmt                   "HELP statement"
+	CommonExpressionStmt       "Common Expression statement"
 
 %type	<item>
 	AdminShowSlow                          "Admin Show Slow statement"
@@ -10982,6 +10983,7 @@ Statement:
 |	ShutdownStmt
 |	RestartStmt
 |	HelpStmt
+|	CommonExpressionStmt
 
 TraceableStmt:
 	DeleteFromStmt
@@ -13462,6 +13464,12 @@ DropSequenceStmt:
 			IfExists:  $3.(bool),
 			Sequences: $4.([]*ast.TableName),
 		}
+	}
+
+CommonExpressionStmt:
+	Expression
+	{
+		$$ = &ast.CommonExpressionStmt{}
 	}
 
 /********************************************************************************************

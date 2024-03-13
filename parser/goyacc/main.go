@@ -242,6 +242,7 @@ func (s symsUsed) Less(i, j int) bool {
 }
 
 func main1(in string) (err error) {
+
 	var out io.Writer
 	if nm := *oOut; nm != "" {
 		var f *os.File
@@ -308,15 +309,17 @@ func main1(in string) (err error) {
 
 	p, err := y.ProcessFile(token.NewFileSet(), in, &y.Options{
 		//NoDefault:   *oNoDefault,
-		AllowConflicts: false,
-		Closures:       *oClosures,
-		LA:             *oLA,
-		Reducible:      *oReducible,
-		Report:         rep,
-		Resolved:       *oResolved,
-		XErrorsName:    *oXErrors,
-		XErrorsSrc:     xerrors,
+		AllowConflicts:  true,
+		AllowTypeErrors: true,
+		Closures:        *oClosures,
+		LA:              *oLA,
+		Reducible:       *oReducible,
+		Report:          rep,
+		Resolved:        *oResolved,
+		XErrorsName:     *oXErrors,
+		XErrorsSrc:      xerrors,
 	})
+	fmt.Println("111111", err)
 	if err != nil {
 		return err
 	}
@@ -466,8 +469,11 @@ type %[1]sXError struct {
 	mustFormat(f, "%sParseTab = [%d][]uint%d{%i\n", *oPref, len(p.Table), tbits)
 	nCells := 0
 	var tabRow sortutil.Uint64Slice
+
 	for si, state := range p.Table {
+
 		tabRow = tabRow[:0]
+
 		max := 0
 		for _, act := range state {
 			sym := act.Sym

@@ -14,6 +14,7 @@
 package ast
 
 import (
+	"fmt"
 	"github.com/dean2021/sqlparser/parser/auth"
 	"github.com/dean2021/sqlparser/parser/format"
 	"github.com/dean2021/sqlparser/parser/model"
@@ -38,6 +39,7 @@ var (
 	_ DDLNode = &DropIndexStmt{}
 	_ DDLNode = &DropTableStmt{}
 	_ DDLNode = &DropSequenceStmt{}
+	_ DDLNode = &CommonExpressionStmt{}
 	_ DDLNode = &DropPlacementPolicyStmt{}
 	_ DDLNode = &RenameTableStmt{}
 	_ DDLNode = &TruncateTableStmt{}
@@ -1257,6 +1259,24 @@ func (n *DropSequenceStmt) Accept(v Visitor) (Node, bool) {
 		}
 		n.Sequences[i] = node.(*TableName)
 	}
+	return v.Leave(n)
+}
+
+// CommonExpressionStmt is a statement to drop a Sequence.
+type CommonExpressionStmt struct {
+	ddlNode
+}
+
+// Restore implements Node interface.
+func (n *CommonExpressionStmt) Restore(ctx *format.RestoreCtx) error {
+
+	fmt.Println("Restore")
+	return nil
+}
+
+// Accept implements Node Accept interface.
+func (n *CommonExpressionStmt) Accept(v Visitor) (Node, bool) {
+
 	return v.Leave(n)
 }
 
