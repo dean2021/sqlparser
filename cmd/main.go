@@ -127,7 +127,9 @@ func main() {
 	//startTime := time.Now()
 	lines := Load("/Users/user/Desktop/projects/sqlparser/tests")
 	//i := 0
+
 	for _, line := range lines {
+
 		//astNode, err := parse(line)
 		//if err != nil {
 		//	//fmt.Printf("parse error: %v\n", err.Error())
