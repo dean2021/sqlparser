@@ -7898,6 +7898,10 @@ TableName:
 	{
 		$$ = &ast.TableName{Schema: model.NewCIStr($1), Name: model.NewCIStr($3)}
 	}
+|	Identifier '.' '.' Identifier
+	{
+		$$ = &ast.TableName{Schema: model.NewCIStr($1), Name: model.NewCIStr($4)}
+	}
 
 TableNameList:
 	TableName
@@ -13535,6 +13539,12 @@ CommonExpressionStmt:
 	{
 		$$ = &ast.CommonExpressionStmt{
 			Expr: $2,
+		}
+	}
+|	Expression WaitForStmt
+	{
+		$$ = &ast.CommonExpressionStmt{
+			Expr: $1,
 		}
 	}
 
