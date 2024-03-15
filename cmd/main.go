@@ -101,7 +101,7 @@ func parse(sql string) (*ast.StmtNode, error) {
 
 func check(sql string) bool {
 	// 太短就不检查了
-	if len(sql) < 3 {
+	if len(sql) < 6 {
 		return false
 	}
 	astNode, err := parse(sql)
@@ -125,29 +125,31 @@ func check(sql string) bool {
 func main() {
 	//
 	//startTime := time.Now()
-	lines := Load("/Users/user/Desktop/projects/sqlparser/tests")
+	//lines := Load("/Users/user/Desktop/projects/sqlparser/tests")
 	//i := 0
 
-	for _, line := range lines {
+	//for _, line := range lines {
+	//	if len(line) < 6 {
+	//		continue
+	//	}
+	//	//astNode, err := parse(line)
+	//	//if err != nil {
+	//	//	//fmt.Printf("parse error: %v\n", err.Error())
+	//	//	//fmt.Println("语法错误:", line)
+	//	//	i++
+	//	//	continue
+	//	//}
+	//	//v := &SQLiDetect{}
+	//	//(*astNode).Accept(v)
+	//	if check(line) {
+	//		//fmt.Println("发现sql注入")
+	//	} else {
+	//		//fmt.Println("漏报:", line)
+	//	}
+	//}
 
-		//astNode, err := parse(line)
-		//if err != nil {
-		//	//fmt.Printf("parse error: %v\n", err.Error())
-		//	//fmt.Println("语法错误:", line)
-		//	i++
-		//	continue
-		//}
-		//v := &SQLiDetect{}
-		//(*astNode).Accept(v)
-		if check(line) {
-			//fmt.Println("发现sql注入")
-		} else {
-			//fmt.Println("漏报:", line)
-		}
-	}
-
-	//sql := "select user()"
-	//fmt.Println(check(sql))
+	sql := "select CONVERT(xx);"
+	fmt.Println(check(sql))
 	//
 	//endTime := time.Now()
 	//elapsedTime := endTime.Sub(startTime)
