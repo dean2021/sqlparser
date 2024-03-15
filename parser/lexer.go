@@ -186,7 +186,6 @@ func (s *Scanner) Lex(v *yySymType) int {
 	if tok == identifier {
 		tok = s.handleIdent(v)
 	}
-
 	if tok == identifier {
 		if tok1 := s.isTokenIdentifier(lit, pos.Offset); tok1 != 0 {
 			tok = tok1
@@ -234,11 +233,12 @@ func (s *Scanner) Lex(v *yySymType) int {
 	case quotedIdentifier, identifier:
 		tok = identifier
 		s.identifierDot = s.r.peek() == '.'
-	default:
 	}
+
 	if tok == unicode.ReplacementChar {
 		return invalid
 	}
+
 	return tok
 }
 
@@ -313,24 +313,17 @@ func (s *Scanner) scan() (tok int, pos Pos, lit string) {
 		// because 0 is a special token id to remind the parser that stream is end.
 		return 0, pos, ""
 	}
-	//
-	//if isBareWord(ch0) {
-	//	return scanBareWord(s)
-	//}
-	//
-	//fmt.Println(ch0)
+
 	if isIdentExtend(ch0) {
 		return scanIdentifier(s)
 	}
 
-	node := &ruleTable
-
 	// search a trie to get a token.
+	node := &ruleTable
 	for ch0 >= 0 && ch0 <= 255 {
 		if node.childs[ch0] == nil || s.r.eof() {
 			break
 		}
-
 		node = node.childs[ch0]
 		if node.fn != nil {
 			return node.fn(s)
@@ -357,7 +350,6 @@ func startWithXx(s *Scanner) (tok int, pos Pos, lit string) {
 		}
 		return
 	}
-
 	s.r.updatePos(pos)
 	return scanIdentifier(s)
 }
@@ -405,7 +397,7 @@ func startWithDash(s *Scanner) (tok int, pos Pos, lit string) {
 	pos = s.r.pos()
 	if strings.HasPrefix(s.r.s[pos.Offset:], "--") {
 		remainLen := len(s.r.s[pos.Offset:])
-		if remainLen == 2 || (remainLen > 2) {
+		if remainLen == 2 || (remainLen > 2 && unicode.IsSpace(rune(s.r.s[pos.Offset+2]))) {
 			s.r.incAsLongAs(func(ch rune) bool {
 				return ch != '\n'
 			})
@@ -512,7 +504,6 @@ func startWithSlash(s *Scanner) (tok int, pos Pos, lit string) {
 				continue
 			}
 		}
-
 		// unclosed comment or other errors.
 		s.errs = append(s.errs, ParseErrorWith(s.r.data(&pos), s.r.p.Line))
 		return
@@ -574,16 +565,6 @@ func scanIdentifier(s *Scanner) (int, Pos, string) {
 	pos := s.r.pos()
 	s.r.incAsLongAs(isIdentChar)
 	return identifier, pos, s.r.data(&pos)
-}
-
-func isBareWordChar(ch rune) bool {
-	return isLetter(ch) || isDigit(ch) || ch == '_' || ch == '$' || ch == ')' || ch == '(' || isIdentExtend(ch)
-}
-
-func scanBareWord(s *Scanner) (int, Pos, string) {
-	pos := s.r.pos()
-	s.r.incAsLongAs(isBareWordChar)
-	return bareword, pos, s.r.data(&pos)
 }
 
 func scanIdentifierOrString(s *Scanner) (tok int, lit string) {
@@ -679,14 +660,7 @@ func (s *Scanner) scanString() (tok int, pos Pos, lit string) {
 	tok, pos = stringLit, s.r.pos()
 	mb := lazyBuf{false, &s.r, &s.buf, &pos}
 	ending := s.r.readByte()
-
-	// todo hack
 	ch0 := s.r.peek()
-	if s.r.eof() {
-		tok = identifier
-		return
-	}
-
 	for !s.r.eof() {
 		if ch0 == ending {
 			s.r.inc()
@@ -699,9 +673,6 @@ func (s *Scanner) scanString() (tok int, pos Pos, lit string) {
 		} else if ch0 == '\\' && !s.sqlMode.HasNoBackslashEscapesMode() {
 			mb.setUseBuf(mb.r.data(&pos)[1:])
 			ch0 = handleEscape(s)
-			// TODO hack
-		} else if ch0 == ' ' {
-			return
 		}
 		mb.writeRune(ch0, s.r.w)
 		if !s.r.eof() {
@@ -791,32 +762,6 @@ func startWithNumber(s *Scanner) (tok int, pos Pos, lit string) {
 	if ch0 == '.' || ch0 == 'e' || ch0 == 'E' {
 		return s.scanFloat(&pos)
 	}
-	//fmt.Println(string(ch0))
-	//// TODO hack
-
-	//fmt.Println(string(ch0), pos.Offset)
-	//if ch0 == ')' || ch0 == '(' {
-	//	//s.r.inc()
-	//	//tok = intLit
-	//	//lit = "0"
-	//	//pos = s.r.pos()
-	//	//fmt.Println(pos.Col)
-	//	//s.r.updatePos(s.r.pos())
-	//
-	//	fmt.Println(pos.Offset)
-	//	//s.r.s[pos.Offset:]
-	//
-	//	//tok, pos, lit = s.scanString()
-	//	//return
-	//}
-	//if ch0 == '\'' || ch0 == '"' {
-	//	//		tok, pos, lit = s.scanString()
-	//	// 目前是把后半截当做字符串了,往前移动，然后把token设置为字符串
-	//	s.r.inc()
-	//	ch0 = s.r.peek()
-	//	//s.r.updatePos(s.r.pos())
-	//	tok = stringLit
-	//}
 
 	// Identifiers may begin with a digit but unless quoted may not consist solely of digits.
 	if !s.r.eof() && isIdentChar(ch0) {
@@ -824,8 +769,6 @@ func startWithNumber(s *Scanner) (tok int, pos Pos, lit string) {
 		return identifier, pos, s.r.data(&pos)
 	}
 	lit = s.r.data(&pos)
-
-	//	fmt.Println("==", lit, tok)
 	return
 }
 
@@ -973,7 +916,6 @@ func (s *Scanner) lastErrorAsWarn() {
 	if len(s.errs) == 0 {
 		return
 	}
-
 	s.warns = append(s.warns, s.errs[len(s.errs)-1])
 	s.errs = s.errs[:len(s.errs)-1]
 }

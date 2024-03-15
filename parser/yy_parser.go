@@ -113,18 +113,16 @@ func New() *Parser {
 		ast.NewParamMarkerExpr == nil ||
 		ast.NewHexLiteral == nil ||
 		ast.NewBitLiteral == nil {
-		panic("no parser driver (forgotten import?) https://github.com/dean2021/sqlparser/parser/issues/43")
+		panic("no parser driver (forgotten import?) https://github.com/pingcap/parser/issues/43")
 	}
 
 	p := &Parser{
 		cache: make([]yySymType, 200),
 	}
-
 	p.EnableWindowFunc(true)
 	p.SetStrictDoubleTypeCheck(true)
 	mode, _ := mysql.GetSQLMode(mysql.DefaultSQLMode)
 	p.SetSQLMode(mode)
-
 	return p
 }
 

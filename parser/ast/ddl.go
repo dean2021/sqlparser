@@ -39,6 +39,7 @@ var (
 	_ DDLNode = &DropTableStmt{}
 	_ DDLNode = &DropSequenceStmt{}
 	_ DDLNode = &CommonExpressionStmt{}
+	_ DDLNode = &WaitForStmt{}
 	_ DDLNode = &DropPlacementPolicyStmt{}
 	_ DDLNode = &RenameTableStmt{}
 	_ DDLNode = &TruncateTableStmt{}
@@ -1258,40 +1259,6 @@ func (n *DropSequenceStmt) Accept(v Visitor) (Node, bool) {
 		}
 		n.Sequences[i] = node.(*TableName)
 	}
-	return v.Leave(n)
-}
-
-//type CommonExprNode struct {
-//	ExprNode
-//}
-//
-//func (n *CommonExprNode) Accept(v Visitor) (Node, bool) {
-//	newNode, skipChildren := v.Enter(n)
-//	if skipChildren {
-//		return v.Leave(newNode)
-//	}
-//
-//	return v.Leave(n)
-//}
-
-// CommonExpressionStmt is a statement to drop a Sequence.
-type CommonExpressionStmt struct {
-	ddlNode
-	Expr ExprNode
-}
-
-// Restore implements Node interface.
-func (n *CommonExpressionStmt) Restore(ctx *format.RestoreCtx) error {
-	return nil
-}
-
-// Accept implements Node Accept interface.
-func (n *CommonExpressionStmt) Accept(v Visitor) (Node, bool) {
-	newNode, skipChildren := v.Enter(n)
-	if skipChildren {
-		return v.Leave(newNode)
-	}
-
 	return v.Leave(n)
 }
 

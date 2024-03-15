@@ -9,7 +9,6 @@ import (
 	_ "github.com/dean2021/sqlparser/parser/test_driver"
 	"reflect"
 	"strings"
-	"time"
 )
 
 type SQLiDetect struct {
@@ -18,9 +17,9 @@ type SQLiDetect struct {
 }
 
 func (v *SQLiDetect) Enter(in ast.Node) (ast.Node, bool) {
+	fmt.Println(reflect.TypeOf(in))
 
 	if ce, ok := in.(*ast.CommonExpressionStmt); ok {
-		fmt.Println(reflect.TypeOf(ce.Expr))
 
 		if op, ok := ce.Expr.(*ast.FuncCallExpr); ok {
 			strArray := []string{"sleep"}
@@ -127,30 +126,30 @@ func parse(sql string) (*ast.StmtNode, error) {
 
 func main() {
 	////
-	startTime := time.Now()
+	//startTime := time.Now()
 
-	lines := Load("/Users/user/Desktop/projects/sqlparser/tests")
-	i := 0
-	for _, line := range lines {
-		_, err := parse(line)
-		if err != nil {
-			//fmt.Printf("parse error: %v\n", err.Error())
-			fmt.Println("语法错误:", line)
-			i++
-			continue
-		}
-		//v := &SQLiDetect{}
-		//(*astNode).Accept(v)
-		//if v.isRisk {
-		//	//fmt.Println("发现sql注入")
-		//} else {
-		//	fmt.Println("漏报:", line)
-		//}
-	}
-
-	endTime := time.Now()
-	elapsedTime := endTime.Sub(startTime)
-	fmt.Printf("代码执行耗时: %s \n", elapsedTime)
+	//lines := Load("/Users/user/Desktop/projects/sqlparser/tests")
+	//i := 0
+	//for _, line := range lines {
+	//	_, err := parse(line)
+	//	if err != nil {
+	//		//fmt.Printf("parse error: %v\n", err.Error())
+	//		fmt.Println("语法错误:", line)
+	//		i++
+	//		continue
+	//	}
+	//	//v := &SQLiDetect{}
+	//	//(*astNode).Accept(v)
+	//	//if v.isRisk {
+	//	//	//fmt.Println("发现sql注入")
+	//	//} else {
+	//	//	fmt.Println("漏报:", line)
+	//	//}
+	//}
+	//
+	//endTime := time.Now()
+	//elapsedTime := endTime.Sub(startTime)
+	//fmt.Printf("代码执行耗时: %s \n", elapsedTime)
 
 	//语法错误: sleep(__TIME__)#
 	//语法错误: ;waitfor delay '0:0:__TIME__'--
@@ -178,21 +177,20 @@ func main() {
 	// 优先按照函数解析，解析失败再按照字面量
 	//line := `1=1 or 1=1 xx 1=1 or 1=1` // or 1 or name="(xx x)" and  1=sleep(1)  or age=(1 or 1=1) or 1=1/* 1 or 1=1`
 	//// version( )1=1 or 1 or name="(xx x)" and  1=sleep(1)  or age=(1 or 1=1) or 1=1/* 1 or 1=1
-	////line := "sleep(1)"
-	//astNode, err := parse(line)
-	//if err != nil {
-	//	fmt.Printf("parse error: %v\n", err.Error())
-	//	return
-	//} else {
-	//	fmt.Println("语法正确")
-	//}
-	//
-	//v := &SQLiDetect{}
-	//(*astNode).Accept(v)
-	//if v.isRisk {
-	//	fmt.Println("发现sql注入")
-	//} else {
-	//	fmt.Println("漏报:", line)
-	//}
-	//fmt.Println("语法解析错误个数:", i)
+	line := `WAITFOR DELAY 'xx'`
+	astNode, err := parse(line)
+	if err != nil {
+		fmt.Printf("parse error: %v\n", err.Error())
+		return
+	} else {
+		fmt.Println("语法正确")
+	}
+
+	v := &SQLiDetect{}
+	(*astNode).Accept(v)
+	if v.isRisk {
+		fmt.Println("发现sql注入")
+	} else {
+		fmt.Println("漏报:", line)
+	}
 }

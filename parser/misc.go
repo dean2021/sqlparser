@@ -27,18 +27,7 @@ func isDigit(ch rune) bool {
 }
 
 func isIdentChar(ch rune) bool {
-	// TODO hack
-
-	// 将单引号、双引号、右括号 当做ident char
-	if ch == '\'' || ch == '"' {
-		return true
-	}
 	return isLetter(ch) || isDigit(ch) || ch == '_' || ch == '$' || isIdentExtend(ch)
-}
-
-func isBareWord(ch rune) bool {
-
-	return true
 }
 
 func isIdentExtend(ch rune) bool {
@@ -105,8 +94,7 @@ func init() {
 	initTokenByte('%', int('%'))
 	initTokenByte(':', int(':'))
 	initTokenByte('|', int('|'))
-	// TODO hack
-	//initTokenByte('!', int('!'))
+	initTokenByte('!', int('!'))
 	initTokenByte('^', int('^'))
 	initTokenByte('~', int('~'))
 	initTokenByte('\\', int('\\'))
@@ -133,7 +121,6 @@ func init() {
 	initTokenFunc("*", startWithStar)
 	initTokenFunc("-", startWithDash)
 	initTokenFunc("#", startWithSharp)
-	// TODO hack
 	initTokenFunc("Xx", startWithXx)
 	initTokenFunc("Nn", startWithNn)
 	initTokenFunc("Bb", startWithBb)
@@ -142,8 +129,6 @@ func init() {
 	initTokenFunc("`", scanQuotedIdent)
 	initTokenFunc("0123456789", startWithNumber)
 	initTokenFunc("'\"", startString)
-	//initTokenFunc("_$ACDEFGHIJKLMOPQRSTUVWYZacdefghijklmopqrstuvwyz", scanBareWord)
-
 }
 
 // isInTokenMap indicates whether the target string is contained in tokenMap.
@@ -634,6 +619,8 @@ var tokenMap = map[string]int{
 	"SEND_CREDENTIALS_TO_TIKV": sendCredentialsToTiKV,
 	"SEPARATOR":                separator,
 	"SEQUENCE":                 sequence,
+	"DELAY":                    delay,
+	"WAITFOR":                  waitfor,
 	"SERIAL":                   serial,
 	"SERIALIZABLE":             serializable,
 	"SESSION":                  session,
@@ -1014,55 +1001,4 @@ func Slice(s string) (b []byte) {
 	pBytes.Len = pString.Len
 	pBytes.Cap = pString.Len
 	return
-}
-
-func (s *Scanner) isBareWord(lit string, offset int) int {
-	// An identifier before or after '.' means it is part of a qualified identifier.
-	// We do not parse it as keyword.
-	//if s.r.peek() == '.' {
-	//	return 0
-	//}
-	//if offset > 0 && s.r.s[offset-1] == '.' {
-	//	return 0
-	//}
-
-	//tok, _, lit := s.scan()
-	//if tok == identifier {
-	//	tok = s.handleIdent(&yySymType{})
-	//}
-
-	//fmt.Println(tok)
-
-	//buf := &s.buf
-	//buf.Reset()
-	//buf.Grow(len(lit))
-	//data := buf.Bytes()[:len(lit)]
-	//
-	//for i := 0; i < len(lit); i++ {
-	//	if lit[i] >= 'a' && lit[i] <= 'z' {
-	//		data[i] = lit[i] + 'A' - 'a'
-	//	} else {
-	//		data[i] = lit[i]
-	//	}
-	//}
-	//
-	//checkBtFuncToken := false
-	//if s.r.peek() == '(' {
-	//	checkBtFuncToken = true
-	//} else if s.sqlMode.HasIgnoreSpaceMode() {
-	//	s.skipWhitespace()
-	//	if s.r.peek() == '(' {
-	//		checkBtFuncToken = true
-	//	}
-	//}
-	//if checkBtFuncToken {
-	//	if tok := btFuncTokenMap[string(data)]; tok != 0 {
-	//		return tok
-	//	}
-	//}
-	//tok, ok := tokenMap[string(data)]
-	//if !ok && s.supportWindowFunc {
-	//	tok = windowFuncTokenMap[string(data)]
-	//}
-	return 0
 }
