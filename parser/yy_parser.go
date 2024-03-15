@@ -119,10 +119,12 @@ func New() *Parser {
 	p := &Parser{
 		cache: make([]yySymType, 200),
 	}
+
 	p.EnableWindowFunc(true)
 	p.SetStrictDoubleTypeCheck(true)
 	mode, _ := mysql.GetSQLMode(mysql.DefaultSQLMode)
 	p.SetSQLMode(mode)
+
 	return p
 }
 

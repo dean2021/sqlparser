@@ -802,10 +802,10 @@ yynewstate:
 		return -1
 	}
 	goto yystack /* stack new state and value */
-}
-
-%[2]s
-`, *oPref, p.Tail)
+}`, *oPref, p.Tail)
+	//%[2]s
+	//`
+	//, *oPref, p.Tail)
 	_ = oNoLines //TODO Ignored for now
 	return nil
 }

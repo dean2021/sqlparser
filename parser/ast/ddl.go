@@ -1282,7 +1282,6 @@ type CommonExpressionStmt struct {
 
 // Restore implements Node interface.
 func (n *CommonExpressionStmt) Restore(ctx *format.RestoreCtx) error {
-
 	return nil
 }
 

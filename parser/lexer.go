@@ -186,6 +186,7 @@ func (s *Scanner) Lex(v *yySymType) int {
 	if tok == identifier {
 		tok = s.handleIdent(v)
 	}
+
 	if tok == identifier {
 		if tok1 := s.isTokenIdentifier(lit, pos.Offset); tok1 != 0 {
 			tok = tok1
@@ -233,12 +234,11 @@ func (s *Scanner) Lex(v *yySymType) int {
 	case quotedIdentifier, identifier:
 		tok = identifier
 		s.identifierDot = s.r.peek() == '.'
+	default:
 	}
-
 	if tok == unicode.ReplacementChar {
 		return invalid
 	}
-
 	return tok
 }
 
@@ -307,27 +307,32 @@ func (s *Scanner) scan() (tok int, pos Pos, lit string) {
 	if unicode.IsSpace(ch0) {
 		ch0 = s.skipWhitespace()
 	}
-
 	pos = s.r.pos()
 	if s.r.eof() {
 		// when scanner meets EOF, the returned token should be 0,
 		// because 0 is a special token id to remind the parser that stream is end.
 		return 0, pos, ""
 	}
-
+	//
+	//if isBareWord(ch0) {
+	//	return scanBareWord(s)
+	//}
+	//
+	//fmt.Println(ch0)
 	if isIdentExtend(ch0) {
 		return scanIdentifier(s)
 	}
 
-	// search a trie to get a token.
 	node := &ruleTable
+
+	// search a trie to get a token.
 	for ch0 >= 0 && ch0 <= 255 {
 		if node.childs[ch0] == nil || s.r.eof() {
 			break
 		}
+
 		node = node.childs[ch0]
 		if node.fn != nil {
-			//fmt.Println(string(ch0))
 			return node.fn(s)
 		}
 		s.r.inc()
@@ -507,6 +512,7 @@ func startWithSlash(s *Scanner) (tok int, pos Pos, lit string) {
 				continue
 			}
 		}
+
 		// unclosed comment or other errors.
 		s.errs = append(s.errs, ParseErrorWith(s.r.data(&pos), s.r.p.Line))
 		return
@@ -568,6 +574,16 @@ func scanIdentifier(s *Scanner) (int, Pos, string) {
 	pos := s.r.pos()
 	s.r.incAsLongAs(isIdentChar)
 	return identifier, pos, s.r.data(&pos)
+}
+
+func isBareWordChar(ch rune) bool {
+	return isLetter(ch) || isDigit(ch) || ch == '_' || ch == '$' || ch == ')' || ch == '(' || isIdentExtend(ch)
+}
+
+func scanBareWord(s *Scanner) (int, Pos, string) {
+	pos := s.r.pos()
+	s.r.incAsLongAs(isBareWordChar)
+	return bareword, pos, s.r.data(&pos)
 }
 
 func scanIdentifierOrString(s *Scanner) (tok int, lit string) {
@@ -808,6 +824,8 @@ func startWithNumber(s *Scanner) (tok int, pos Pos, lit string) {
 		return identifier, pos, s.r.data(&pos)
 	}
 	lit = s.r.data(&pos)
+
+	//	fmt.Println("==", lit, tok)
 	return
 }
 
@@ -955,6 +973,7 @@ func (s *Scanner) lastErrorAsWarn() {
 	if len(s.errs) == 0 {
 		return
 	}
+
 	s.warns = append(s.warns, s.errs[len(s.errs)-1])
 	s.errs = s.errs[:len(s.errs)-1]
 }

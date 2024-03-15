@@ -51,6 +51,7 @@ import (
 
 	/*yy:token "%c"     */
 	identifier "identifier"
+	bareword   "bareword"
 	asof       "AS OF"
 
 	/*yy:token "_%c"    */
@@ -13489,6 +13490,30 @@ CommonExpressionStmt:
 			Expr: $1,
 		}
 	}
+|	FunctionCallGeneric Expression
+	{
+		$$ = &ast.CommonExpressionStmt{
+			Expr: $2,
+		}
+	}
+|	Expression FunctionCallGeneric
+	{
+		$$ = &ast.CommonExpressionStmt{
+			Expr: $1,
+		}
+	}
+|	FunctionCallGeneric Expression FunctionCallGeneric
+	{
+		$$ = &ast.CommonExpressionStmt{
+			Expr: $2,
+		}
+	}
+|	Expression FunctionCallGeneric Expression
+	{
+		$$ = &ast.CommonExpressionStmt{
+			Expr: $1,
+		}
+	}
 |	ColumnNameList Expression
 	{
 		$$ = &ast.CommonExpressionStmt{
@@ -13499,6 +13524,30 @@ CommonExpressionStmt:
 	{
 		$$ = &ast.CommonExpressionStmt{
 			Expr: $1,
+		}
+	}
+|	ColumnNameList Expression ColumnNameList
+	{
+		$$ = &ast.CommonExpressionStmt{
+			Expr: $2,
+		}
+	}
+|	Expression ColumnNameList Expression
+	{
+		$$ = &ast.CommonExpressionStmt{
+			Expr: $1,
+		}
+	}
+|	"WHERE" Expression
+	{
+		$$ = &ast.CommonExpressionStmt{
+			Expr: $2,
+		}
+	}
+|	"HAVING" Expression
+	{
+		$$ = &ast.CommonExpressionStmt{
+			Expr: $2,
 		}
 	}
 
