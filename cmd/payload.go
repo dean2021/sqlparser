@@ -9,6 +9,7 @@ import (
 func Load(dirname string) []string {
 
 	var payloads []string
+	var uniq = make(map[string]bool)
 	// 使用filepath.Walk遍历目录
 	err := filepath.Walk(dirname, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -34,8 +35,11 @@ func Load(dirname string) []string {
 					continue
 				}
 
-				// 打印非注释行
-				payloads = append(payloads, line)
+				if _, ok := uniq[line]; !ok {
+					uniq[line] = true
+					// 打印非注释行
+					payloads = append(payloads, line)
+				}
 			}
 		}
 

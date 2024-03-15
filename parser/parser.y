@@ -866,6 +866,7 @@ import (
 	DropTableStmt              "DROP TABLE statement"
 	DropSequenceStmt           "DROP SEQUENCE statement"
 	CommonExpressionStmt       "CommonExpressionStmt"
+	UnionSelectStmt            "UnionSelectStmt"
 	WaitForStmt                "WaitFor statement"
 	DropUserStmt               "DROP USER"
 	DropRoleStmt               "DROP ROLE"
@@ -5872,7 +5873,6 @@ UnReservedKeyword:
 |	"WEIGHT_STRING"
 |	"ANY"
 |	"SOME"
-|	"USER"
 |	"IDENTIFIED"
 |	"COLLATION"
 |	"COMMENT"
@@ -6091,6 +6091,7 @@ UnReservedKeyword:
 |	"CLUSTERED"
 |	"NONCLUSTERED"
 |	"PRESERVE"
+|	"USER"
 
 TiDBKeyword:
 	"ADMIN"
@@ -6984,9 +6985,9 @@ FunctionNameConflict:
 |	"TIME"
 |	"TIMESTAMP"
 |	"TRUNCATE"
-|	"USER"
 |	"WEEK"
 |	"YEAR"
+|	"USER"
 
 OptionalBraces:
 	{}
@@ -9293,6 +9294,12 @@ SetOprStmt:
 		$$ = setOpr
 	}
 
+UnionSelectStmt:
+	SetOpr SelectStmt
+	{
+		$$ = $2.(*ast.SelectStmt)
+	}
+
 // See https://dev.mysql.com/doc/refman/5.7/en/union.html
 // See https://mariadb.com/kb/en/intersect/
 // See https://mariadb.com/kb/en/except/
@@ -10992,6 +10999,7 @@ Statement:
 |	HelpStmt
 |	WaitForStmt
 |	CommonExpressionStmt
+|	UnionSelectStmt
 
 TraceableStmt:
 	DeleteFromStmt

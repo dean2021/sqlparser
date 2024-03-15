@@ -7,6 +7,7 @@ import (
 	"github.com/dean2021/sqlparser/parser/opcode"
 	"github.com/dean2021/sqlparser/parser/test_driver"
 	_ "github.com/dean2021/sqlparser/parser/test_driver"
+	"github.com/dean2021/sqlparser/test3"
 	"strings"
 )
 
@@ -24,7 +25,8 @@ func (v *SQLiDetect) Enter(in ast.Node) (ast.Node, bool) {
 	}
 	if ce, ok := in.(*ast.CommonExpressionStmt); ok {
 		if op, ok := ce.Expr.(*ast.FuncCallExpr); ok {
-			strArray := []string{"sleep", "benchmark", "pg_sleep", "exec", "randomblob"}
+
+			strArray := []string{"sleep", "benchmark", "pg_sleep", "exec", "randomblob", "substring", "lower", "ascii", "version", "databases"}
 			for _, value := range strArray {
 				if value == strings.ToLower(op.FnName.String()) {
 					v.isRisk = true
@@ -104,8 +106,16 @@ func check(sql string) bool {
 	}
 	astNode, err := parse(sql)
 	if err != nil {
-		fmt.Println("语法错误:", sql)
-		return false
+		code := test3.Fix(sql)
+		astNode, err := parse(code)
+		if err != nil {
+			fmt.Println("语法错误:", sql)
+			fmt.Println("修复语法:", code)
+			return false
+		}
+		v := &SQLiDetect{}
+		(*astNode).Accept(v)
+		return v.isRisk
 	}
 	v := &SQLiDetect{}
 	(*astNode).Accept(v)
@@ -113,7 +123,7 @@ func check(sql string) bool {
 }
 
 func main() {
-	////
+	//
 	//startTime := time.Now()
 	lines := Load("/Users/user/Desktop/projects/sqlparser/tests")
 	//i := 0
@@ -134,6 +144,8 @@ func main() {
 		}
 	}
 
+	//sql := "select user()"
+	//fmt.Println(check(sql))
 	//
 	//endTime := time.Now()
 	//elapsedTime := endTime.Sub(startTime)
