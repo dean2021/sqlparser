@@ -8,6 +8,7 @@ import (
 	"github.com/dean2021/sqlparser/parser/test_driver"
 	_ "github.com/dean2021/sqlparser/parser/test_driver"
 	"github.com/dean2021/sqlparser/test3"
+	"reflect"
 	"strings"
 )
 
@@ -17,6 +18,7 @@ type SQLiDetect struct {
 }
 
 func (v *SQLiDetect) Enter(in ast.Node) (ast.Node, bool) {
+
 	if _, ok := in.(*ast.CreateTableStmt); ok {
 		v.isRisk = true
 	}
@@ -24,8 +26,8 @@ func (v *SQLiDetect) Enter(in ast.Node) (ast.Node, bool) {
 		v.isRisk = true
 	}
 	if ce, ok := in.(*ast.CommonExpressionStmt); ok {
-		if op, ok := ce.Expr.(*ast.FuncCallExpr); ok {
 
+		if op, ok := ce.Expr.(*ast.FuncCallExpr); ok {
 			strArray := []string{"sleep", "benchmark", "pg_sleep", "exec", "randomblob", "substring", "lower", "ascii", "version", "databases"}
 			for _, value := range strArray {
 				if value == strings.ToLower(op.FnName.String()) {
@@ -35,17 +37,24 @@ func (v *SQLiDetect) Enter(in ast.Node) (ast.Node, bool) {
 			}
 		}
 		if op, ok := ce.Expr.(*ast.BinaryOperationExpr); ok {
+			//fmt.Println(reflect.TypeOf(op.Op))
 			if op.L != nil {
 				if op, ok := op.L.(*ast.BinaryOperationExpr); ok {
+
 					if op.Op == opcode.LogicOr || op.Op == opcode.LogicAnd {
 						v.isRisk = true
 					}
 				}
 			}
+
+			fmt.Println("reflect.TypeOf(op.R)", reflect.TypeOf(op.R))
+			fmt.Println(op.R.Text())
+			if r, ok := op.R.(*ast.BinaryOperationExpr); ok {
+				fmt.Println(reflect.TypeOf(op.L), op.Op, r.L.Text(), r.Op, r.R.Text())
+			}
 			if op.Op == opcode.LogicOr || op.Op == opcode.LogicAnd {
 				v.isRisk = true
 			}
-
 		}
 
 		if _, ok := ce.Expr.(*ast.SubqueryExpr); ok {
@@ -57,6 +66,8 @@ func (v *SQLiDetect) Enter(in ast.Node) (ast.Node, bool) {
 			v.isRisk = true
 		}
 		if val, ok := ce.Expr.(*test_driver.ValueExpr); ok {
+			//fmt.Println(reflect.TypeOf(ce.Expr))
+			//fmt.Println(val.GetValue())
 			if str, ok := val.GetValue().(string); ok {
 				if check(str) {
 					v.isRisk = true
@@ -72,8 +83,8 @@ func (v *SQLiDetect) Enter(in ast.Node) (ast.Node, bool) {
 	if _, ok := in.(*ast.SelectStmt); ok {
 		v.isRisk = true
 	}
-
 	if val, ok := in.(*test_driver.ValueExpr); ok {
+
 		if str, ok := val.GetValue().(string); ok {
 			if check(str) {
 				v.isRisk = true
@@ -148,8 +159,18 @@ func main() {
 	//	}
 	//}
 
-	sql := "select CONVERT(xx);"
-	fmt.Println(check(sql))
+	//sql := "1='"
+	sql := "m' or '1'='12'"
+
+	astNode, err := parse(sql)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	v := &SQLiDetect{}
+	(*astNode).Accept(v)
+
+	//fmt.Println(check(sql))
 	//
 	//endTime := time.Now()
 	//elapsedTime := endTime.Sub(startTime)

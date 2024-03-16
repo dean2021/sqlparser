@@ -661,10 +661,12 @@ func (s *Scanner) scanString() (tok int, pos Pos, lit string) {
 	mb := lazyBuf{false, &s.r, &s.buf, &pos}
 	ending := s.r.readByte()
 	ch0 := s.r.peek()
+
 	for !s.r.eof() {
 		if ch0 == ending {
 			s.r.inc()
-			if s.r.peek() != ending {
+			c := s.r.peek()
+			if c != ending {
 				lit = mb.data()
 				return
 			}
@@ -674,6 +676,7 @@ func (s *Scanner) scanString() (tok int, pos Pos, lit string) {
 			mb.setUseBuf(mb.r.data(&pos)[1:])
 			ch0 = handleEscape(s)
 		}
+		//fmt.Println(string(ch0), string(ending), lit)
 		mb.writeRune(ch0, s.r.w)
 		if !s.r.eof() {
 			s.r.inc()
@@ -681,8 +684,22 @@ func (s *Scanner) scanString() (tok int, pos Pos, lit string) {
 		}
 	}
 
-	tok = unicode.ReplacementChar
+	// HACK: '14' or '13'='1
+	// HACK: '14' or '13'='
+	// 未闭合的字符串也当做字符串
+	str := mb.r.data(&pos)
+	lastCh1 := rune(s.r.s[s.r.pos().Col-1])
+	// 说明只有一个单引号作为开始, 是一个空字符, 例如： 1=',  修复它
+	if lastCh1 == ending {
+		lit = "NULL_STRING"
+		return
+	}
+
+	// 说明只有一个单引号作为开始, 并不是空字符串, 例如： 1='xxx,  修复它
+	lit = str[1:]
 	return
+	//tok = unicode.ReplacementChar
+	//return
 }
 
 // handleEscape handles the case in scanString when previous char is '\'.
@@ -769,7 +786,15 @@ func startWithNumber(s *Scanner) (tok int, pos Pos, lit string) {
 		return identifier, pos, s.r.data(&pos)
 	}
 	lit = s.r.data(&pos)
+
+	// HACK:  1' or 1=1
+	// 如果发现单引号，说明并不是数字而是字符串
+	if ch0 == '\'' || ch0 == '"' {
+		tok = stringLit
+	}
+	//fmt.Println(lit)
 	return
+	//return
 }
 
 func startWithDot(s *Scanner) (tok int, pos Pos, lit string) {

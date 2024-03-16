@@ -37,9 +37,16 @@ func start(char byte) StateFunc {
 	} else if regexp.MustCompile(`[a-zA-Z]`).MatchString(string(char)) {
 		currentToken = &Token{Type: "Identifier", Token: string(char)}
 		return inIdentifier
+		//} else if char == byte(')') {
+		//	//currentToken = &Token{Type: "xxxx", Token: string(char)}
+		//	//currentToken.Token += string(char)
+		//	//emitToken(*currentToken)
+		//	//currentToken = nil
+		//	return start
 	} else {
-		currentToken = &Token{Type: "Bareword", Token: string(char)}
-		return inBareword
+		//currentToken = &Token{Type: "Bareword", Token: string(char)}
+		//return inBareword
+		return start
 	}
 	return nil
 }
@@ -117,10 +124,10 @@ func inNumber(char byte) StateFunc {
 	if regexp.MustCompile(`\d`).MatchString(string(char)) {
 		currentToken.Token += string(char)
 		return inNumber
-	} else if !regexp.MustCompile(`[=+\-*\%\s]`).MatchString(string(char)) {
-		currentToken.Type = "Bareword"
-		currentToken.Token += string(char)
-		return inBareword
+		//} else if !regexp.MustCompile(`[=+\-*\%\s]`).MatchString(string(char)) {
+		//	currentToken.Type = "Bareword"
+		//	currentToken.Token += string(char)
+		//	return inBareword
 	} else {
 		emitToken(*currentToken)
 		currentToken = nil
@@ -261,6 +268,7 @@ func Fix(code string) string {
 	codeTokens := tokenizer(code)
 
 	for i, token := range codeTokens {
+		//	fmt.Println(token)
 		//result = result + token.Token
 		//fmt.Println(token)
 		//if token.Type == "Bareword" {
@@ -288,7 +296,9 @@ func Fix(code string) string {
 	//fmt.Println("before", code)
 	//fmt.Println("repair", startRepairString+result+endRepairString)
 	//fmt.Println("####")
-	return startRepairString + result + endRepairString
+	s := startRepairString + result + endRepairString
+	//fmt.Println(s)
+	return s
 }
 
 //code := "1231312 31' or '1'='1"

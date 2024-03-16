@@ -5305,6 +5305,11 @@ BoolPri:
 	{
 		$$ = &ast.BinaryOperationExpr{Op: $2.(opcode.Op), L: $1, R: $3}
 	}
+	// HACK: =1 or 1=1
+|	CompareOp PredicateExpr %prec eq
+	{
+		$$ = &ast.BinaryOperationExpr{Op: $1.(opcode.Op), R: $2}
+	}
 |	BoolPri CompareOp AnyOrAll SubSelect %prec eq
 	{
 		sq := $4.(*ast.SubqueryExpr)

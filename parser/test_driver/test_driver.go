@@ -57,6 +57,11 @@ type ValueExpr struct {
 	projectionOffset int
 }
 
+// HACK：增加Text方法，返回当前值
+func (n *ValueExpr) Text() string {
+	return fmt.Sprintf("%v", n.GetValue())
+}
+
 // Restore implements Node interface.
 func (n *ValueExpr) Restore(ctx *format.RestoreCtx) error {
 	switch n.Kind() {
