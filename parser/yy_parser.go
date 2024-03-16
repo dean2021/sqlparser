@@ -172,6 +172,32 @@ func (parser *Parser) Parse(sql, charset, collation string) (stmt []ast.StmtNode
 	return parser.result, warns, nil
 }
 
+func (parser *Parser) Parse2(sql, charset, collation string) (stmt []ast.StmtNode, warns []error, err error) {
+	sql = parser.lexer.tryDecodeToUTF8String(sql)
+	if charset == "" {
+		charset = mysql.DefaultCharset
+	}
+	if collation == "" {
+		collation = mysql.DefaultCollationName
+	}
+	parser.charset = charset
+	parser.collation = collation
+	parser.src = sql
+	parser.result = parser.result[:0]
+
+	var l yyLexer
+	parser.lexer.reset(sql)
+	l = &parser.lexer
+	yyParse(l, parser)
+
+	l.Errors()
+
+	return parser.result, nil, nil
+	//for _, stmt := range parser.result {
+	//	ast.SetFlag(stmt)
+	//}
+}
+
 func (parser *Parser) lastErrorAsWarn() {
 	parser.lexer.lastErrorAsWarn()
 }

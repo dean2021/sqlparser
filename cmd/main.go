@@ -7,9 +7,9 @@ import (
 	"github.com/dean2021/sqlparser/parser/opcode"
 	"github.com/dean2021/sqlparser/parser/test_driver"
 	_ "github.com/dean2021/sqlparser/parser/test_driver"
-	"github.com/dean2021/sqlparser/test3"
 	"reflect"
 	"strings"
+	"time"
 )
 
 type SQLiDetect struct {
@@ -26,7 +26,7 @@ func (v *SQLiDetect) Enter(in ast.Node) (ast.Node, bool) {
 		v.isRisk = true
 	}
 	if ce, ok := in.(*ast.CommonExpressionStmt); ok {
-
+		fmt.Println(reflect.TypeOf(ce.Expr))
 		if op, ok := ce.Expr.(*ast.FuncCallExpr); ok {
 			strArray := []string{"sleep", "benchmark", "pg_sleep", "exec", "randomblob", "substring", "lower", "ascii", "version", "databases"}
 			for _, value := range strArray {
@@ -47,10 +47,17 @@ func (v *SQLiDetect) Enter(in ast.Node) (ast.Node, bool) {
 				}
 			}
 
-			fmt.Println("reflect.TypeOf(op.R)", reflect.TypeOf(op.R))
-			fmt.Println(op.R.Text())
+			fmt.Println("一级:", reflect.TypeOf(op.L), op.Op, reflect.TypeOf(op.R))
+
+			//fmt.Println("reflect.TypeOf(op.R)", reflect.TypeOf(op.R))
+			//fmt.Println(op.R.Text())
+			if l, ok := op.L.(*ast.BinaryOperationExpr); ok {
+				fmt.Println("	L:", l.L.Text(), l.Op, l.R.Text())
+			} else if l, ok := op.L.(*test_driver.ValueExpr); ok {
+				fmt.Println("	V:", l.GetValue())
+			}
 			if r, ok := op.R.(*ast.BinaryOperationExpr); ok {
-				fmt.Println(reflect.TypeOf(op.L), op.Op, r.L.Text(), r.Op, r.R.Text())
+				fmt.Println("	R:", r.L.Text(), r.Op, r.R.Text())
 			}
 			if op.Op == opcode.LogicOr || op.Op == opcode.LogicAnd {
 				v.isRisk = true
@@ -65,15 +72,19 @@ func (v *SQLiDetect) Enter(in ast.Node) (ast.Node, bool) {
 		if _, ok := ce.Expr.(*ast.ParenthesesExpr); ok {
 			v.isRisk = true
 		}
+
 		if val, ok := ce.Expr.(*test_driver.ValueExpr); ok {
-			//fmt.Println(reflect.TypeOf(ce.Expr))
-			//fmt.Println(val.GetValue())
-			if str, ok := val.GetValue().(string); ok {
-				if check(str) {
-					v.isRisk = true
-				}
-			}
+			fmt.Println("字符串:", val.GetValue())
 		}
+		//if val, ok := ce.Expr.(*test_driver.ValueExpr); ok {
+		//	//fmt.Println(reflect.TypeOf(ce.Expr))
+		//	//fmt.Println(val.GetValue())
+		//	//if str, ok := val.GetValue().(string); ok {
+		//	//if check(str) {
+		//	v.isRisk = true
+		//	//}
+		//	//}
+		//}
 
 		//if v.isRisk == false {
 		//	fmt.Println(reflect.TypeOf(ce.Expr))
@@ -83,14 +94,15 @@ func (v *SQLiDetect) Enter(in ast.Node) (ast.Node, bool) {
 	if _, ok := in.(*ast.SelectStmt); ok {
 		v.isRisk = true
 	}
-	if val, ok := in.(*test_driver.ValueExpr); ok {
 
-		if str, ok := val.GetValue().(string); ok {
-			if check(str) {
-				v.isRisk = true
-			}
-		}
-	}
+	//if val, ok := in.(*test_driver.ValueExpr); ok {
+	//
+	//	if str, ok := val.GetValue().(string); ok {
+	//		//if check(str) {
+	//			v.isRisk = true
+	//		}
+	//	}
+	//}
 
 	return in, false
 }
@@ -110,32 +122,32 @@ func parse(sql string) (*ast.StmtNode, error) {
 	return &stmtNodes, nil
 }
 
-func check(sql string) bool {
-	// 太短就不检查了
-	if len(sql) < 6 {
-		return false
-	}
-	astNode, err := parse(sql)
-	if err != nil {
-		code := test3.Fix(sql)
-		astNode, err := parse(code)
-		if err != nil {
-			fmt.Println("语法错误:", sql)
-			fmt.Println("修复语法:", code)
-			return false
-		}
-		v := &SQLiDetect{}
-		(*astNode).Accept(v)
-		return v.isRisk
-	}
-	v := &SQLiDetect{}
-	(*astNode).Accept(v)
-	return v.isRisk
-}
+//func check(sql string) bool {
+//	// 太短就不检查了
+//	if len(sql) < 6 {
+//		return false
+//	}
+//	astNode, err := parse(sql)
+//	if err != nil {
+//		code := test3.Fix(sql)
+//		astNode, err := parse(code)
+//		if err != nil {
+//			fmt.Println("语法错误:", sql)
+//			fmt.Println("修复语法:", code)
+//			return false
+//		}
+//		v := &SQLiDetect{}
+//		(*astNode).Accept(v)
+//		return v.isRisk
+//	}
+//	v := &SQLiDetect{}
+//	(*astNode).Accept(v)
+//	return v.isRisk
+//}
 
 func main() {
 	//
-	//startTime := time.Now()
+	startTime := time.Now()
 	//lines := Load("/Users/user/Desktop/projects/sqlparser/tests")
 	//i := 0
 
@@ -160,21 +172,21 @@ func main() {
 	//}
 
 	//sql := "1='"
-	sql := "m' or '1'='12'"
+	sql := "'1' or '1'='1"
 
-	astNode, err := parse(sql)
+	astNode, err := parse(string(sql))
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 	v := &SQLiDetect{}
 	(*astNode).Accept(v)
-
+	//fmt.Println(sql)
 	//fmt.Println(check(sql))
 	//
-	//endTime := time.Now()
-	//elapsedTime := endTime.Sub(startTime)
-	//fmt.Printf("代码执行耗时: %s \n", elapsedTime)
+	endTime := time.Now()
+	elapsedTime := endTime.Sub(startTime)
+	fmt.Printf("代码执行耗时: %s \n", elapsedTime)
 
 	//语法错误: sleep(__TIME__)#
 	//语法错误: ;waitfor delay '0:0:__TIME__'--

@@ -289,7 +289,7 @@ func Fix(code string) string {
 		}
 
 		if token.Type == "Space" && i == 0 {
-			startRepairString = "T"
+			startRepairString = "xxx"
 		}
 	}
 

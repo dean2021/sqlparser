@@ -170,12 +170,65 @@ func (s *Scanner) getNextToken() int {
 	return tok
 }
 
+//func (s *Scanner) Reduced(rule, state int, lval *yySymType) bool {
+//
+//	//fmt.Println(rule, state, lval)
+//
+//	return false
+//}
+
 // Lex returns a token and store the token value in v.
 // Scanner satisfies yyLexer interface.
 // 0 and invalid are special token id this function would return:
 // return 0 tells parser that scanner meets EOF,
 // return invalid tells parser that scanner meets illegal character.
 func (s *Scanner) Lex(v *yySymType) int {
+
+	// 首次进入
+	//if v.offset == 0 {
+	//	ch0 := s.r.peek()
+	//	if isDigit(ch0) {
+	//		for {
+	//			s.r.inc()
+	//			ch := s.r.peek()
+	//			if s.r.eof() {
+	//				break
+	//			}
+	//			if ch == '\'' || ch == '"' || isLetter(ch) {
+	//				pos := s.r.pos()
+	//				pos.Col = 0
+	//				pos.Offset = 0
+	//				s.r.s = string(ch) + s.r.s
+	//				s.r.updatePos(pos)
+	//				break
+	//			}
+	//		}
+	//	} else if ch0 == '\'' || ch0 == '"' {
+	//		for {
+	//			s.r.inc()
+	//			ch := s.r.peek()
+	//			if s.r.eof() {
+	//				break
+	//			}
+	//
+	//			if ch == ' ' || ch == '\'' || ch == '"' {
+	//
+	//				fmt.Println(string(ch), "  ", string(ch0))
+	//				pos := s.r.pos()
+	//				pos.Col = 0
+	//				pos.Offset = 0
+	//				s.r.s = string(ch0) + s.r.s
+	//				s.r.updatePos(pos)
+	//				fmt.Println(s.r.s)
+	//				break
+	//
+	//			}
+	//		}
+	//	}
+	//}
+	// HACK: 6' or 'xx
+	// 对开始是数字的进行特殊处理
+
 	tok, pos, lit := s.scan()
 	s.lastScanOffset = pos.Offset
 	s.lastKeyword3 = s.lastKeyword2
@@ -192,6 +245,17 @@ func (s *Scanner) Lex(v *yySymType) int {
 			s.lastKeyword = tok1
 		}
 	}
+
+	//if tok == intLit && pos.Offset == 0 {
+	//	//fmt.Println("发现数字", pos.Offset, string(s.r.s[v.offset]))
+	//	//v.offset = +1
+	//	tok = identifier
+	//	pos.Col = 0
+	//	pos.Offset = pos.Offset + 1
+	//	s.r.s = "'" + s.r.s
+	//	s.r.updatePos(pos)
+	//}
+
 	if s.sqlMode.HasANSIQuotesMode() &&
 		tok == stringLit &&
 		s.r.s[v.offset] == '"' {
@@ -346,6 +410,12 @@ func startWithXx(s *Scanner) (tok int, pos Pos, lit string) {
 			s.r.inc()
 			tok, lit = hexLit, s.r.data(&pos)
 		} else {
+
+			// HACK： x' or '2'='23'
+			// 修复x开头，只有引号结尾的，设置为字符串
+			//tok = stringLit
+			//lit = s.r.data(&pos)[:1]
+
 			tok = unicode.ReplacementChar
 		}
 		return
@@ -364,6 +434,13 @@ func startWithNn(s *Scanner) (tok int, pos Pos, lit string) {
 			tok = underscoreCS
 			lit = "utf8"
 		}
+
+		// HACK： b' or '2'='23'
+		//if s.r.peek() == '\'' || s.r.peek() == '"' {
+		//	// 修复n开头，只有引号结尾的，设置为字符串
+		//	tok = stringLit
+		//	lit = s.r.data(&pos)[:1]
+		//}
 	}
 	return
 }
@@ -378,7 +455,12 @@ func startWithBb(s *Scanner) (tok int, pos Pos, lit string) {
 			s.r.inc()
 			tok, lit = bitLit, s.r.data(&pos)
 		} else {
-			tok = unicode.ReplacementChar
+
+			// HACK： b' or '2'='23'
+			// 修复x开头，只有引号结尾的，设置为字符串
+			//tok = stringLit
+			//lit = s.r.data(&pos)[:1]
+			// tok = unicode.ReplacementChar
 		}
 		return
 	}
@@ -564,6 +646,12 @@ func startWithAt(s *Scanner) (tok int, pos Pos, lit string) {
 func scanIdentifier(s *Scanner) (int, Pos, string) {
 	pos := s.r.pos()
 	s.r.incAsLongAs(isIdentChar)
+
+	//fmt.Println(s.r.data(&pos))
+	//s.r.inc()
+	//if s.r.peek() == '\'' {
+	//
+	//}
 	return identifier, pos, s.r.data(&pos)
 }
 
@@ -661,7 +749,7 @@ func (s *Scanner) scanString() (tok int, pos Pos, lit string) {
 	mb := lazyBuf{false, &s.r, &s.buf, &pos}
 	ending := s.r.readByte()
 	ch0 := s.r.peek()
-
+	//fmt.Println("ch0", string(ch0))
 	for !s.r.eof() {
 		if ch0 == ending {
 			s.r.inc()
@@ -694,9 +782,9 @@ func (s *Scanner) scanString() (tok int, pos Pos, lit string) {
 		lit = "NULL_STRING"
 		return
 	}
-
 	// 说明只有一个单引号作为开始, 并不是空字符串, 例如： 1='xxx,  修复它
 	lit = str[1:]
+
 	return
 	//tok = unicode.ReplacementChar
 	//return
@@ -737,6 +825,8 @@ func startWithNumber(s *Scanner) (tok int, pos Pos, lit string) {
 	pos = s.r.pos()
 	tok = intLit
 	ch0 := s.r.readByte()
+	//fmt.Println("ch0", string(ch0))
+
 	if ch0 == '0' {
 		tok = intLit
 		ch1 := s.r.peek()
@@ -785,13 +875,31 @@ func startWithNumber(s *Scanner) (tok int, pos Pos, lit string) {
 		s.r.incAsLongAs(isIdentChar)
 		return identifier, pos, s.r.data(&pos)
 	}
+
 	lit = s.r.data(&pos)
 
+	//fmt.Println(pos.Col, pos.Offset)
 	// HACK:  1' or 1=1
 	// 如果发现单引号，说明并不是数字而是字符串
-	if ch0 == '\'' || ch0 == '"' {
-		tok = stringLit
-	}
+	//if ch0 == '\'' || ch0 == '"' {
+	//
+	//	lit = "'"
+	//	tok = stringLit
+	//	return s.scanString()
+	//
+	//	//fmt.Println(s.r.pos().Offset)
+	//	//pos = s.r.pos()
+	//	//pos.Offset = 0
+	//	////
+	//	//s.r.updatePos(pos)
+	//	//fmt.Println(s.r.data(&pos))
+	//	//tok = stringLit
+	//	//return s.scanString()
+	//	//tok = stringLit
+	//	//s.r.incAsLongAs(isIdentChar)
+	//	//return identifier, pos, s.r.data(&pos)
+	//	//	fmt.Println(s.r.data(&pos))
+	//}
 	//fmt.Println(lit)
 	return
 	//return

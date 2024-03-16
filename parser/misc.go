@@ -27,6 +27,7 @@ func isDigit(ch rune) bool {
 }
 
 func isIdentChar(ch rune) bool {
+	//fmt.Print(string(ch))
 	return isLetter(ch) || isDigit(ch) || ch == '_' || ch == '$' || isIdentExtend(ch)
 }
 
