@@ -7619,8 +7619,8 @@ SimpleIdent:
 
 SimpleExpr:
 	SimpleIdent
-|	FunctionCallKeyword
-|	FunctionCallNonKeyword
+//|	FunctionCallKeyword
+//|	FunctionCallNonKeyword
 |	FunctionCallGeneric
 |	SimpleExpr "COLLATE" CollationName
 	{
@@ -15104,6 +15104,12 @@ DropSequenceStmt:
 
 CommonExpressionStmt:
 	Expression
+	{
+		$$ = &ast.CommonExpressionStmt{
+			Expr: $1,
+		}
+	}
+|	Expression SelectStmtLimit
 	{
 		$$ = &ast.CommonExpressionStmt{
 			Expr: $1,

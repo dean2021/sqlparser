@@ -5,7 +5,9 @@ import (
 	"github.com/dean2021/sqlparser"
 	"github.com/dean2021/sqlparser/ast"
 	"github.com/dean2021/sqlparser/opcode"
+	"github.com/dean2021/sqlparser/test_driver"
 	_ "github.com/dean2021/sqlparser/test_driver"
+	"reflect"
 	"strings"
 )
 
@@ -44,18 +46,18 @@ func (v *SQLiDetect) Enter(in ast.Node) (ast.Node, bool) {
 				}
 			}
 
-			//fmt.Println("一级:", reflect.TypeOf(op.L), op.Op, reflect.TypeOf(op.R))
+			fmt.Println("一级:", reflect.TypeOf(op.L), op.Op, reflect.TypeOf(op.R))
 
-			//fmt.Println("reflect.TypeOf(op.R)", reflect.TypeOf(op.R))
-			//fmt.Println(op.R.Text())
-			//if l, ok := op.L.(*ast.BinaryOperationExpr); ok {
-			//	fmt.Println("	L:", l.L.Text(), l.Op, l.R.Text())
-			//} else if l, ok := op.L.(*test_driver.ValueExpr); ok {
-			//	fmt.Println("	V:", l.GetValue())
-			//}
-			//if r, ok := op.R.(*ast.BinaryOperationExpr); ok {
-			//	fmt.Println("	R:", r.L.Text(), r.Op, r.R.Text())
-			//}
+			fmt.Println("reflect.TypeOf(op.R)", reflect.TypeOf(op.R))
+			fmt.Println(op.R.Text())
+			if l, ok := op.L.(*ast.BinaryOperationExpr); ok {
+				fmt.Println("	L:", l.L.Text(), l.Op, l.R.Text())
+			} else if l, ok := op.L.(*test_driver.ValueExpr); ok {
+				fmt.Println("	V:", l.GetValue())
+			}
+			if r, ok := op.R.(*ast.BinaryOperationExpr); ok {
+				fmt.Println("	R:", r.L.Text(), r.Op, r.R.Text())
+			}
 			if op.Op == opcode.LogicOr || op.Op == opcode.LogicAnd {
 				v.isRisk = true
 			}
@@ -88,7 +90,12 @@ func (v *SQLiDetect) Enter(in ast.Node) (ast.Node, bool) {
 		//}
 	}
 
-	if _, ok := in.(*ast.SelectStmt); ok {
+	if s, ok := in.(*ast.SelectStmt); ok {
+		for _, field := range s.Fields.Fields {
+			if call, ok := field.Expr.(*ast.FuncCallExpr); ok {
+				fmt.Println(call.FnName, call.Args)
+			}
+		}
 		v.isRisk = true
 	}
 
@@ -112,6 +119,7 @@ func (v *SQLiDetect) Leave(in ast.Node) (ast.Node, bool) {
 
 func parse(sql string) (*ast.StmtNode, error) {
 	p := sqlparser.New()
+	p.EnableWindowFunc(false)
 	stmtNodes, err := p.ParseOneStmt(sql, "", "")
 	if err != nil {
 		return nil, err
@@ -144,42 +152,6 @@ func parse(sql string) (*ast.StmtNode, error) {
 
 func main() {
 
-	//var testcase = []string{
-	//	"a or 1=1",
-	//	"aa or 1=1",
-	//	"a or 1=1",
-	//	"a\" or 1=1",
-	//	"a' or 1=1",
-	//	"a) or 1=1",
-	//	"a   )   \"   )   or 1=1",
-	//	"1   )   \"   )   or 1=1",
-	//	"1) or 1=1",
-	//	"version(1) or 1=1",
-	//	"version(1)/**/or 1=1",
-	//	"1 or 1=1",
-	//	"12 or 1=1",
-	//	"1a or 1=1",
-	//	"1\" or 1=1",
-	//	"1' or 1=1",
-	//	"1' or '1'='1",
-	//	"1' or '1'='1/*",
-	//	`SLEEP(1)/*' or SLEEP(1) or '" or SLEEP(1) or "*/`,
-	//}
-	//for _, v := range testcase {
-	//	test3.Tokens = []test3.Token{}
-	//	test3.CurrentToken = nil
-	//	test3.Pos = 0
-	//	test3.Data = ""
-	//	s := test3.Fix(v)
-	//	fmt.Println("修复前:", v)
-	//	fmt.Println("修复后:", s)
-	//}
-
-	//s := test3.Fix(`SLEEP(1)/*' or SLEEP(1) or '" or SLEEP(1) or "*/`)
-	////s := test3.Fix(`SLEEP(1)/*xxx*/`)
-	//fmt.Println(s)
-	// a)") or 1=1
-
 	//startTime := time.Now()
 	//lines := Load("/Users/user/Desktop/projects/sqlparser/tests")
 	//
@@ -187,114 +159,17 @@ func main() {
 	//	if len(line) < 6 {
 	//		continue
 	//	}
-	//
-	//	test3.Tokens = []test3.Token{}
-	//	test3.CurrentToken = nil
-	//	test3.Pos = 0
-	//	test3.Data = ""
-	//
-	//	//fmt.Println(line)
-	//	s := test3.Fix(line)
-	//	//fmt.Println("修复后:", s)
-	//	_, err := parse(s)
-	//	if err != nil {
-	//		fmt.Println("修复前:", line)
-	//		fmt.Println("语法错误:", s)
-	//		continue
-	//	}
-	//	//	v := &SQLiDetect{}
-	//	//	(*astNode).Accept(v)
-	//	//	//if check(line) {
-	//	//	//	//fmt.Println("发现sql注入")
-	//	//	//} else {
-	//	//	//	//fmt.Println("漏报:", line)
-	//	//	//}
-	//	//}
-	//
-	//	//sql := "1='"
-	//	//sql := "'1'=1 or '1'='1"
-	//	//
-	//	//astNode, err := parse(string(sql))
-	//	//if err != nil {
-	//	//	fmt.Println(err)
-	//	//	return
-	//	//}
-	//	//v := &SQLiDetect{}
-	//	//(*astNode).Accept(v)
-	//	////fmt.Println(sql)
-	//	////fmt.Println(check(sql))
-	//	////
-	//	//endTime := time.Now()
-	//	//elapsedTime := endTime.Sub(startTime)
-	//	//fmt.Printf("代码执行耗时: %s \n", elapsedTime)
-	//
-	//	//sql := `' or '1'='1`
-	//
-	//	//sqls := []string{
-	//	//	`' or '1'='1'`,
-	//	//	`' or '1'='1`,
-	//	//	`1 or '1'='1`,
-	//	//	`'1' or '1'='1'`,
-	//	//	`1 or '1'='1'`,
-	//	//	`select '1`,
-	//	//}
-	//	//
-	//	//for _, sql := range sqls {
-	//	//	fmt.Println("==================")
-	//	//	fmt.Println("修复前:", sql)
-	//	//	fmt.Println("修复后:", test3.Fix(sql))
-	//	//}
-	//
-	//	//test3.Fix(`a or '1'='1`)
-	//
-	//	//语法错误: sleep(__TIME__)#
-	//	//语法错误: ;waitfor delay '0:0:__TIME__'--
-	//	//语法错误: );waitfor delay '0:0:__TIME__'--
-	//	//语法错误: ';waitfor delay '0:0:__TIME__'--
-	//	//语法错误: ";waitfor delay '0:0:__TIME__'--
-	//	//语法错误: ');waitfor delay '0:0:__TIME__'--
-	//	//语法错误: ");waitfor delay '0:0:__TIME__'--
-	//	//语法错误: ));waitfor delay '0:0:__TIME__'--
-	//	//语法错误: '));waitfor delay '0:0:__TIME__'--
-	//	//语法错误: "));waitfor delay '0:0:__TIME__'--
-	//	//语法错误: benchmark(10000000,MD5(1))#
-	//	//语法错误: 1 or benchmark(10000000,MD5(1))#
-	//	//语法错误: " or benchmark(10000000,MD5(1))#
-	//	//语法错误: ' or benchmark(10000000,MD5(1))#
-	//	//语法错误: 1) or benchmark(10000000,MD5(1))#
-	//	//语法错误: ") or benchmark(10000000,MD5(1))#
-	//	//语法错误: ') or benchmark(10000000,MD5(1))#
-	//	//语法错误: 1)) or benchmark(10000000,MD5(1))#
-	//	//语法错误: ")) or benchmark(10000000,MD5(1))#
-	//	//语法错误: ')) or benchmark(10000000,MD5(1))#
-	//	//语法错误:  OR 3409=3409 AND ('pytW' LIKE 'pytW
-	//	//语法错误:  OR 3409=3409 AND ('pytW' LIKE 'pytY
-	//
-	//	// 优先按照函数解析，解析失败再按照字面量
-	//	//line := `1=1 or 1=1 xx 1=1 or 1=1` // or 1 or name="(xx x)" and  1=sleep(1)  or age=(1 or 1=1) or 1=1/* 1 or 1=1`
-	//	//// version( )1=1 or 1 or name="(xx x)" and  1=sleep(1)  or age=(1 or 1=1) or 1=1/* 1 or 1=1
-	//	//line := `WAITFOR DELAY 'xx'`
-	//	//astNode, err := parse(line)
-	//	//if err != nil {
-	//	//	fmt.Printf("parse error: %v\n", err.Error())
-	//	//	return
-	//	//} else {
-	//	//	fmt.Println("语法正确")
-	//	//}
-	//	//
-	//	//v := &SQLiDetect{}
-	//	//(*astNode).Accept(v)
-	//	//if v.isRisk {
-	//	//	fmt.Println("发现sql注入")
-	//	//} else {
-	//	//	fmt.Println("漏报:", line)
-	//	//}
-	//}
 
-	_, err := parse(`SELECT USER();`)
+	node, err := parse(`select CUME_DIST('abc123')`)
+	//select substring(1)
+	//select substrings(1)
 	if err != nil {
 		fmt.Println("语法错误:", err)
-
+		return
 	}
-
+	v := &SQLiDetect{}
+	(*node).Accept(v)
+	if v.isRisk {
+		fmt.Println("发现sql注入")
+	}
 }
