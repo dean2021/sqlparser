@@ -16,6 +16,8 @@ package sqlparser_test
 import (
 	"bytes"
 	"fmt"
+	"github.com/dean2021/sqlparser"
+	"github.com/dean2021/sqlparser/format"
 	"runtime"
 	"strings"
 	"testing"
@@ -32,7 +34,7 @@ import (
 )
 
 func TestSimple(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 
 	reservedKws := []string{
 		"add", "all", "alter", "analyze", "and", "as", "asc", "between", "bigint",
@@ -315,7 +317,7 @@ func TestSimple(t *testing.T) {
 }
 
 func TestSpecialComments(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 
 	// 1. Make sure /*! ... */ respects the same SQL mode.
 	_, err := p.ParseOneStmt(`SELECT /*! '\' */;`, "", "")
@@ -358,7 +360,7 @@ type testErrMsgCase struct {
 }
 
 func RunTest(t *testing.T, table []testCase, enableWindowFunc bool) {
-	p := parser.New()
+	p := sqlparser.New()
 	p.EnableWindowFunc(enableWindowFunc)
 	for _, tbl := range table {
 		_, _, err := p.Parse(tbl.src, "", "")
@@ -376,7 +378,7 @@ func RunTest(t *testing.T, table []testCase, enableWindowFunc bool) {
 
 func RunRestoreTest(t *testing.T, sourceSQLs, expectSQLs string, enableWindowFunc bool) {
 	var sb strings.Builder
-	p := parser.New()
+	p := sqlparser.New()
 	p.EnableWindowFunc(enableWindowFunc)
 	comment := fmt.Sprintf("source %v", sourceSQLs)
 	stmts, _, err := p.Parse(sourceSQLs, "", "")
@@ -384,7 +386,7 @@ func RunRestoreTest(t *testing.T, sourceSQLs, expectSQLs string, enableWindowFun
 	restoreSQLs := ""
 	for _, stmt := range stmts {
 		sb.Reset()
-		err = stmt.Restore(NewRestoreCtx(DefaultRestoreFlags, &sb))
+		err = stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb))
 		require.NoError(t, err, comment)
 		restoreSQL := sb.String()
 		comment = fmt.Sprintf("source %v; restore %v", sourceSQLs, restoreSQL)
@@ -402,7 +404,7 @@ func RunRestoreTest(t *testing.T, sourceSQLs, expectSQLs string, enableWindowFun
 }
 
 func RunTestInRealAsFloatMode(t *testing.T, table []testCase, enableWindowFunc bool) {
-	p := parser.New()
+	p := sqlparser.New()
 	p.EnableWindowFunc(enableWindowFunc)
 	p.SetSQLMode(mysql.ModeRealAsFloat)
 	for _, tbl := range table {
@@ -422,7 +424,7 @@ func RunTestInRealAsFloatMode(t *testing.T, table []testCase, enableWindowFunc b
 
 func RunRestoreTestInRealAsFloatMode(t *testing.T, sourceSQLs, expectSQLs string, enableWindowFunc bool) {
 	var sb strings.Builder
-	p := parser.New()
+	p := sqlparser.New()
 	p.EnableWindowFunc(enableWindowFunc)
 	p.SetSQLMode(mysql.ModeRealAsFloat)
 	comment := fmt.Sprintf("source %v", sourceSQLs)
@@ -431,7 +433,7 @@ func RunRestoreTestInRealAsFloatMode(t *testing.T, sourceSQLs, expectSQLs string
 	restoreSQLs := ""
 	for _, stmt := range stmts {
 		sb.Reset()
-		err = stmt.Restore(NewRestoreCtx(DefaultRestoreFlags, &sb))
+		err = stmt.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb))
 		require.NoError(t, err, comment)
 		restoreSQL := sb.String()
 		comment = fmt.Sprintf("source %v; restore %v", sourceSQLs, restoreSQL)
@@ -449,7 +451,7 @@ func RunRestoreTestInRealAsFloatMode(t *testing.T, sourceSQLs, expectSQLs string
 }
 
 func RunErrMsgTest(t *testing.T, table []testErrMsgCase) {
-	p := parser.New()
+	p := sqlparser.New()
 	for _, tbl := range table {
 		_, _, err := p.Parse(tbl.src, "", "")
 		comment := fmt.Sprintf("source %v", tbl.src)
@@ -1444,7 +1446,7 @@ func TestSetVariable(t *testing.T) {
 		{"set @xx.xx = 666", "xx.xx", false, false},
 	}
 
-	p := parser.New()
+	p := sqlparser.New()
 	for _, tbl := range table {
 		stmt, err := p.ParseOneStmt(tbl.Input, "", "")
 		require.NoError(t, err)
@@ -1464,7 +1466,7 @@ func TestSetVariable(t *testing.T) {
 }
 
 func TestFlushTable(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	stmt, _, err := p.Parse("flush local tables tbl1,tbl2 with read lock", "", "")
 	require.NoError(t, err)
 	flushTable := stmt[0].(*ast.FlushStmt)
@@ -1476,7 +1478,7 @@ func TestFlushTable(t *testing.T) {
 }
 
 func TestFlushPrivileges(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	stmt, _, err := p.Parse("flush privileges", "", "")
 	require.NoError(t, err)
 	flushPrivilege := stmt[0].(*ast.FlushStmt)
@@ -2387,7 +2389,7 @@ func TestBuiltinFuncAsIdentifier(t *testing.T) {
 
 	testcases := make([]testCase, 0, 3*len(whitespaceFuncs))
 	runTests := func(ignoreSpace bool) {
-		p := parser.New()
+		p := sqlparser.New()
 		if ignoreSpace {
 			p.SetSQLMode(mysql.ModeIgnoreSpace)
 		}
@@ -3921,7 +3923,7 @@ func TestDDL(t *testing.T) {
 }
 
 func TestHintError(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	stmt, warns, err := p.Parse("select /*+ tidb_unknown(T1,t2) */ c1, c2 from t1, t2 where t1.c1 = t2.c1", "", "")
 	require.NoError(t, err)
 	require.Len(t, warns, 1)
@@ -3959,7 +3961,7 @@ func TestHintError(t *testing.T) {
 }
 
 func TestErrorMsg(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	_, _, err := p.Parse("select1 1", "", "")
 	require.EqualError(t, err, "line 1 column 7 near \"select1 1\" ")
 	_, _, err = p.Parse("select 1 from1 dual", "", "")
@@ -4063,7 +4065,7 @@ func TestErrorMsg(t *testing.T) {
 }
 
 func TestOptimizerHints(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	// Test USE_INDEX
 	stmt, _, err := p.Parse("select /*+ USE_INDEX(T1,T2), use_index(t3,t4) */ c1, c2 from t1, t2 where t1.c1 = t2.c1", "", "")
 	require.NoError(t, err)
@@ -5059,7 +5061,7 @@ func TestSubquery(t *testing.T) {
 		{"SELECT 1 > (select 1)", "select 1"},
 		{"SELECT 1 > (select 1 union select 2)", "select 1 union select 2"},
 	}
-	p := parser.New()
+	p := sqlparser.New()
 	for _, tbl := range tests {
 		stmt, err := p.ParseOneStmt(tbl.input, "", "")
 		require.NoError(t, err)
@@ -5206,7 +5208,7 @@ func checkOrderBy(t *testing.T, s ast.Node, hasOrderBy []bool, i int) int {
 }
 
 func TestUnionOrderBy(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	p.EnableWindowFunc(false)
 
 	tests := []struct {
@@ -5332,7 +5334,7 @@ func TestPriority(t *testing.T) {
 	}
 	RunTest(t, table, false)
 
-	p := parser.New()
+	p := sqlparser.New()
 	stmt, _, err := p.Parse("select HIGH_PRIORITY * from t", "", "")
 	require.NoError(t, err)
 	sel := stmt[0].(*ast.SelectStmt)
@@ -5359,7 +5361,7 @@ func TestSQLNoCache(t *testing.T) {
 		{`select * from t`, true, "SELECT * FROM `t`"},
 	}
 
-	p := parser.New()
+	p := sqlparser.New()
 	for _, tbl := range table {
 		stmt, _, err := p.Parse(tbl.src, "", "")
 		require.NoError(t, err)
@@ -5563,7 +5565,7 @@ func TestBinding(t *testing.T) {
 	}
 	RunTest(t, table, false)
 
-	p := parser.New()
+	p := sqlparser.New()
 	sms, _, err := p.Parse("create global binding for select * from t using select * from t use index(a)", "", "")
 	require.NoError(t, err)
 	v, ok := sms[0].(*ast.CreateBindingStmt)
@@ -5647,7 +5649,7 @@ func TestView(t *testing.T) {
 	RunTest(t, table, false)
 
 	// Test case for the text of the select statement in create view statement.
-	p := parser.New()
+	p := sqlparser.New()
 	sms, _, err := p.Parse("create view v as select * from t", "", "")
 	require.NoError(t, err)
 	v, ok := sms[0].(*ast.CreateViewStmt)
@@ -5682,7 +5684,7 @@ func TestView(t *testing.T) {
 func TestTimestampDiffUnit(t *testing.T) {
 	// Test case for timestampdiff unit.
 	// TimeUnit should be unified to upper case.
-	p := parser.New()
+	p := sqlparser.New()
 	stmt, _, err := p.Parse("SELECT TIMESTAMPDIFF(MONTH,'2003-02-01','2003-05-01'), TIMESTAMPDIFF(month,'2003-02-01','2003-05-01');", "", "")
 	require.NoError(t, err)
 	ss := stmt[0].(*ast.SelectStmt)
@@ -5717,7 +5719,7 @@ func TestTimestampDiffUnit(t *testing.T) {
 
 func TestFuncCallExprOffset(t *testing.T) {
 	// Test case for offset field on func call expr.
-	p := parser.New()
+	p := sqlparser.New()
 	stmt, _, err := p.Parse("SELECT s.a(), b();", "", "")
 	require.NoError(t, err)
 	ss := stmt[0].(*ast.SelectStmt)
@@ -5770,7 +5772,7 @@ func TestParseShowOpenTables(t *testing.T) {
 }
 
 func TestSQLModeANSIQuotes(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	p.SetSQLMode(mysql.ModeANSIQuotes)
 	tests := []string{
 		`CREATE TABLE "table" ("id" int)`,
@@ -5783,7 +5785,7 @@ func TestSQLModeANSIQuotes(t *testing.T) {
 }
 
 func TestDDLStatements(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	// Tests that whatever the charset it is define, we always assign utf8 charset and utf8_bin collate.
 	createTableStr := `CREATE TABLE t (
 		a varchar(64) binary,
@@ -5957,7 +5959,7 @@ func TestTableSample(t *testing.T) {
 		{"select 1 from dual tablesample system (50);", false, ""},
 	}
 	RunTest(t, table, false)
-	p := parser.New()
+	p := sqlparser.New()
 	cases := []string{
 		"select * from tbl tablesample (33.3 + 44.4);",
 		"select * from tbl tablesample (33.3 + 44.4 percent);",
@@ -5988,7 +5990,7 @@ func TestGeneratedColumn(t *testing.T) {
 		{"create table t (c int, d int as (   c + 1   ) virtual)", true, "c + 1"},
 		{"create table t (c int, d int as (1 + 1) stored)", true, "1 + 1"},
 	}
-	p := parser.New()
+	p := sqlparser.New()
 	for _, tbl := range tests {
 		stmtNodes, _, err := p.Parse(tbl.input, "", "")
 		if tbl.ok {
@@ -6033,7 +6035,7 @@ func TestSetTransaction(t *testing.T) {
 			true, "REPEATABLE-READ",
 		},
 	}
-	p := parser.New()
+	p := sqlparser.New()
 	for _, tbl := range tests {
 		stmt1, err := p.ParseOneStmt(tbl.input, "", "")
 		require.NoError(t, err)
@@ -6049,7 +6051,7 @@ func TestSetTransaction(t *testing.T) {
 func TestSideEffect(t *testing.T) {
 	// This test cover a bug that parse an error SQL doesn't leave the parser in a
 	// clean state, cause the following SQL parse fail.
-	p := parser.New()
+	p := sqlparser.New()
 	_, err := p.ParseOneStmt("create table t /*!50100 'abc', 'abc' */;", "", "")
 	require.Error(t, err)
 
@@ -6254,7 +6256,7 @@ ENGINE=INNODB PARTITION BY LINEAR HASH (a) PARTITIONS 1;`, true, "CREATE TABLE `
 	RunTest(t, table, false)
 
 	// Check comment content.
-	p := parser.New()
+	p := sqlparser.New()
 	stmt, err := p.ParseOneStmt("create table t (id int) partition by range (id) (partition p0 values less than (10) comment 'check')", "", "")
 	require.NoError(t, err)
 	createTable := stmt.(*ast.CreateTableStmt)
@@ -6268,7 +6270,7 @@ func TestTablePartitionNameList(t *testing.T) {
 		{`select * from t partition (p0,p1)`, true, ""},
 	}
 
-	p := parser.New()
+	p := sqlparser.New()
 	for _, tbl := range table {
 		stmt, _, err := p.Parse(tbl.src, "", "")
 		require.NoError(t, err)
@@ -6289,7 +6291,7 @@ func TestNotExistsSubquery(t *testing.T) {
 		{`select * from t1 where not exists (select * from t2 where t1.a = t2.a)`, true, ""},
 	}
 
-	p := parser.New()
+	p := sqlparser.New()
 	for _, tbl := range table {
 		stmt, _, err := p.Parse(tbl.src, "", "")
 		require.NoError(t, err)
@@ -6304,7 +6306,7 @@ func TestNotExistsSubquery(t *testing.T) {
 func TestWindowFunctionIdentifier(t *testing.T) {
 	//nolint: prealloc
 	var table []testCase
-	for key := range parser.WindowFuncTokenMapForTest {
+	for key := range sqlparser.WindowFuncTokenMapForTest {
 		table = append(table, testCase{fmt.Sprintf("select 1 %s", key), false, fmt.Sprintf("SELECT 1 AS `%s`", key)})
 	}
 	RunTest(t, table, true)
@@ -6424,7 +6426,7 @@ func (wfc *windowFrameBoundChecker) Leave(inNode ast.Node) (node ast.Node, ok bo
 // For issue #51
 // See https://github.com/pingcap/parser/pull/51 for details
 func TestVisitFrameBound(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	p.EnableWindowFunc(true)
 	table := []struct {
 		s      string
@@ -6446,7 +6448,7 @@ func TestVisitFrameBound(t *testing.T) {
 }
 
 func TestFieldText(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	stmts, _, err := p.Parse("select a from t", "", "")
 	require.NoError(t, err)
 	tmp := stmts[0].(*ast.SelectStmt)
@@ -6468,7 +6470,7 @@ func TestFieldText(t *testing.T) {
 
 // See https://github.com/pingcap/parser/issue/94
 func TestQuotedSystemVariables(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 
 	st, err := p.ParseOneStmt(
 		"select @@Sql_Mode, @@`SQL_MODE`, @@session.`sql_mode`, @@global.`s ql``mode`, @@session.'sql\\nmode', @@local.\"sql\\\"mode\";",
@@ -6529,7 +6531,7 @@ func TestQuotedSystemVariables(t *testing.T) {
 
 // See https://github.com/pingcap/parser/issue/95
 func TestQuotedVariableColumnName(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 
 	st, err := p.ParseOneStmt(
 		"select @abc, @`abc`, @'aBc', @\"AbC\", @6, @`6`, @'6', @\"6\", @@sql_mode, @@`sql_mode`, @;",
@@ -6559,7 +6561,7 @@ func TestQuotedVariableColumnName(t *testing.T) {
 }
 
 func TestCharset(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 
 	st, err := p.ParseOneStmt("ALTER SCHEMA GLOBAL DEFAULT CHAR SET utf8mb4", "", "")
 	require.NoError(t, err)
@@ -6573,7 +6575,7 @@ func TestCharset(t *testing.T) {
 }
 
 func TestUnderscoreCharset(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	tests := []struct {
 		cs        string
 		parseFail bool
@@ -6599,7 +6601,7 @@ func TestUnderscoreCharset(t *testing.T) {
 }
 
 func TestFulltextSearch(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 
 	st, err := p.ParseOneStmt("SELECT * FROM fulltext_test WHERE MATCH(content) AGAINST('search')", "", "")
 	require.NoError(t, err)
@@ -6661,7 +6663,7 @@ func TestStartTransaction(t *testing.T) {
 }
 
 func TestSignedInt64OutOfRange(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	cases := []string{
 		"recover table by job 18446744073709551612",
 		"recover table t 18446744073709551612",
@@ -6933,7 +6935,7 @@ func TestStatisticsOps(t *testing.T) {
 	}
 	RunTest(t, table, false)
 
-	p := parser.New()
+	p := sqlparser.New()
 	sms, _, err := p.Parse("create statistics if not exists stats1 (cardinality) on t(a,b,c)", "", "")
 	require.NoError(t, err)
 	v, ok := sms[0].(*ast.CreateStatisticsStmt)
@@ -6949,7 +6951,7 @@ func TestStatisticsOps(t *testing.T) {
 }
 
 func TestHighNotPrecedenceMode(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	var sb strings.Builder
 
 	sms, _, err := p.Parse("SELECT NOT 1 BETWEEN -5 AND 5", "", "")
@@ -6959,7 +6961,7 @@ func TestHighNotPrecedenceMode(t *testing.T) {
 	v1, ok := v.Fields.Fields[0].Expr.(*ast.UnaryOperationExpr)
 	require.True(t, ok)
 	require.Equal(t, opcode.Not, v1.Op)
-	err = sms[0].Restore(NewRestoreCtx(DefaultRestoreFlags, &sb))
+	err = sms[0].Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb))
 	require.NoError(t, err)
 	restoreSQL := sb.String()
 	require.Equal(t, "SELECT NOT 1 BETWEEN -5 AND 5", restoreSQL)
@@ -6971,13 +6973,13 @@ func TestHighNotPrecedenceMode(t *testing.T) {
 	require.True(t, ok)
 	_, ok = v.Fields.Fields[0].Expr.(*ast.BetweenExpr)
 	require.True(t, ok)
-	err = sms[0].Restore(NewRestoreCtx(DefaultRestoreFlags, &sb))
+	err = sms[0].Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb))
 	require.NoError(t, err)
 	restoreSQL = sb.String()
 	require.Equal(t, "SELECT !1 BETWEEN -5 AND 5", restoreSQL)
 	sb.Reset()
 
-	p = parser.New()
+	p = sqlparser.New()
 	p.SetSQLMode(mysql.ModeHighNotPrecedence)
 	sms, _, err = p.Parse("SELECT NOT 1 BETWEEN -5 AND 5", "", "")
 	require.NoError(t, err)
@@ -6985,7 +6987,7 @@ func TestHighNotPrecedenceMode(t *testing.T) {
 	require.True(t, ok)
 	_, ok = v.Fields.Fields[0].Expr.(*ast.BetweenExpr)
 	require.True(t, ok)
-	err = sms[0].Restore(NewRestoreCtx(DefaultRestoreFlags, &sb))
+	err = sms[0].Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb))
 	require.NoError(t, err)
 	restoreSQL = sb.String()
 	require.Equal(t, "SELECT !1 BETWEEN -5 AND 5", restoreSQL)
@@ -7082,23 +7084,23 @@ func TestWithoutCharsetFlags(t *testing.T) {
 		src     string
 		ok      bool
 		restore string
-		flag    RestoreFlags
+		flag    format.RestoreFlags
 	}
 
-	flag := RestoreStringSingleQuotes | RestoreSpacesAroundBinaryOperation | RestoreBracketAroundBinaryOperation | RestoreNameBackQuotes
+	flag := format.RestoreStringSingleQuotes | format.RestoreSpacesAroundBinaryOperation | format.RestoreBracketAroundBinaryOperation | format.RestoreNameBackQuotes
 	cases := []testCaseWithFlag{
-		{"select 'a'", true, "SELECT 'a'", flag | RestoreStringWithoutCharset},
-		{"select _utf8'a'", true, "SELECT 'a'", flag | RestoreStringWithoutCharset},
-		{"select _utf8mb4'a'", true, "SELECT 'a'", flag | RestoreStringWithoutCharset},
-		{"select _utf8 X'D0B1'", true, "SELECT x'd0b1'", flag | RestoreStringWithoutCharset},
+		{"select 'a'", true, "SELECT 'a'", flag | format.RestoreStringWithoutCharset},
+		{"select _utf8'a'", true, "SELECT 'a'", flag | format.RestoreStringWithoutCharset},
+		{"select _utf8mb4'a'", true, "SELECT 'a'", flag | format.RestoreStringWithoutCharset},
+		{"select _utf8 X'D0B1'", true, "SELECT x'd0b1'", flag | format.RestoreStringWithoutCharset},
 
-		{"select _utf8mb4'a'", true, "SELECT 'a'", flag | RestoreStringWithoutDefaultCharset},
-		{"select _utf8'a'", true, "SELECT _utf8'a'", flag | RestoreStringWithoutDefaultCharset},
-		{"select _utf8'a'", true, "SELECT _utf8'a'", flag | RestoreStringWithoutDefaultCharset},
-		{"select _utf8 X'D0B1'", true, "SELECT _utf8 x'd0b1'", flag | RestoreStringWithoutDefaultCharset},
+		{"select _utf8mb4'a'", true, "SELECT 'a'", flag | format.RestoreStringWithoutDefaultCharset},
+		{"select _utf8'a'", true, "SELECT _utf8'a'", flag | format.RestoreStringWithoutDefaultCharset},
+		{"select _utf8'a'", true, "SELECT _utf8'a'", flag | format.RestoreStringWithoutDefaultCharset},
+		{"select _utf8 X'D0B1'", true, "SELECT _utf8 x'd0b1'", flag | format.RestoreStringWithoutDefaultCharset},
 	}
 
-	p := parser.New()
+	p := sqlparser.New()
 	p.EnableWindowFunc(false)
 	for _, tbl := range cases {
 		stmts, _, err := p.Parse(tbl.src, "", "")
@@ -7112,7 +7114,7 @@ func TestWithoutCharsetFlags(t *testing.T) {
 		restoreSQLs := ""
 		for _, stmt := range stmts {
 			sb.Reset()
-			ctx := NewRestoreCtx(tbl.flag, &sb)
+			ctx := format.NewRestoreCtx(tbl.flag, &sb)
 			ctx.DefaultDB = "test"
 			err = stmt.Restore(ctx)
 			require.NoError(t, err)
@@ -7132,7 +7134,7 @@ func TestRestoreBinOpWithBrackets(t *testing.T) {
 		{"select mod( year(a) - abs(weekday(a) + dayofweek(a)), 4) + 1", true, "SELECT (((year(`a`) - abs((weekday(`a`) + dayofweek(`a`)))) % 4) + 1)"},
 	}
 
-	p := parser.New()
+	p := sqlparser.New()
 	p.EnableWindowFunc(false)
 	for _, tbl := range cases {
 		_, _, err := p.Parse(tbl.src, "", "")
@@ -7151,7 +7153,7 @@ func TestRestoreBinOpWithBrackets(t *testing.T) {
 			restoreSQLs := ""
 			for _, stmt := range stmts {
 				sb.Reset()
-				ctx := NewRestoreCtx(RestoreStringSingleQuotes|RestoreSpacesAroundBinaryOperation|RestoreBracketAroundBinaryOperation|RestoreStringWithoutCharset|RestoreNameBackQuotes, &sb)
+				ctx := format.NewRestoreCtx(format.RestoreStringSingleQuotes|format.RestoreSpacesAroundBinaryOperation|format.RestoreBracketAroundBinaryOperation|format.RestoreStringWithoutCharset|format.RestoreNameBackQuotes, &sb)
 				ctx.DefaultDB = "test"
 				err = stmt.Restore(ctx)
 				require.NoError(t, err, comment)
@@ -7190,7 +7192,7 @@ func TestCTEBindings(t *testing.T) {
 		{"with cte as (select * from t union select * from cte) select * from cte", true, "WITH `cte` AS (SELECT * FROM `test`.`t` UNION SELECT * FROM `test`.`cte`) SELECT * FROM `cte`"},
 	}
 
-	p := parser.New()
+	p := sqlparser.New()
 	p.EnableWindowFunc(false)
 	for _, tbl := range table {
 		_, _, err := p.Parse(tbl.src, "", "")
@@ -7209,7 +7211,7 @@ func TestCTEBindings(t *testing.T) {
 			restoreSQLs := ""
 			for _, stmt := range stmts {
 				sb.Reset()
-				ctx := NewRestoreCtx(RestoreStringSingleQuotes|RestoreSpacesAroundBinaryOperation|RestoreStringWithoutCharset|RestoreNameBackQuotes, &sb)
+				ctx := format.NewRestoreCtx(format.RestoreStringSingleQuotes|format.RestoreSpacesAroundBinaryOperation|format.RestoreStringWithoutCharset|format.RestoreNameBackQuotes, &sb)
 				ctx.DefaultDB = "test"
 				err = stmt.Restore(ctx)
 				require.NoError(t, err, comment)
@@ -7247,7 +7249,7 @@ func TestPlanReplayer(t *testing.T) {
 	}
 	RunTest(t, table, false)
 
-	p := parser.New()
+	p := sqlparser.New()
 	sms, _, err := p.Parse("PLAN REPLAYER DUMP EXPLAIN SELECT a FROM t", "", "")
 	require.NoError(t, err)
 	v, ok := sms[0].(*ast.PlanReplayerStmt)
@@ -7264,7 +7266,7 @@ func TestPlanReplayer(t *testing.T) {
 }
 
 func TestGBKEncoding(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	gbkEncoding, _ := charset.Lookup("gbk")
 	encoder := gbkEncoding.NewEncoder()
 	sql, err := encoder.String("create table 测试表 (测试列 varchar(255) default 'GBK测试用例');")
@@ -7277,7 +7279,7 @@ func TestGBKEncoding(t *testing.T) {
 	require.NotEqual(t, "测试表", checker.tblName)
 	require.NotEqual(t, "测试列", checker.colName)
 
-	gbkOpt := parser.CharsetClient("gbk")
+	gbkOpt := sqlparser.CharsetClient("gbk")
 	stmt, _, err = p.ParseSQL(sql, gbkOpt)
 	require.NoError(t, err)
 	_, _ = stmt[0].Accept(checker)
@@ -7343,14 +7345,14 @@ func TestInsertStatementMemoryAllocation(t *testing.T) {
 	sql := "insert t values (1)" + strings.Repeat(",(1)", 1000)
 	var oldStats, newStats runtime.MemStats
 	runtime.ReadMemStats(&oldStats)
-	_, err := parser.New().ParseOneStmt(sql, "", "")
+	_, err := sqlparser.New().ParseOneStmt(sql, "", "")
 	require.NoError(t, err)
 	runtime.ReadMemStats(&newStats)
 	require.Less(t, int(newStats.TotalAlloc-oldStats.TotalAlloc), 1024*500)
 }
 
 func TestCharsetIntroducer(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	defer charset.RemoveCharset("gbk")
 	// `_gbk` is treated as a character set.
 	_, _, err := p.Parse("select _gbk 'a';", "", "")
@@ -7479,19 +7481,19 @@ func TestTTLTableOption(t *testing.T) {
 }
 
 func TestIssue45898(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	p.ParseSQL("a.")
 	stmts, _, err := p.ParseSQL("select count(1) from t")
 	require.NoError(t, err)
 	var sb strings.Builder
-	restoreCtx := NewRestoreCtx(DefaultRestoreFlags, &sb)
+	restoreCtx := format.NewRestoreCtx(format.DefaultRestoreFlags, &sb)
 	sb.Reset()
 	stmts[0].Restore(restoreCtx)
 	require.Equal(t, "SELECT COUNT(1) FROM `t`", sb.String())
 }
 
 func TestMultiStmt(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	stmts, _, err := p.Parse("SELECT 'foo'; SELECT 'foo;bar','baz'; select 'foo' , 'bar' , 'baz' ;select 1", "", "")
 	require.NoError(t, err)
 	require.Equal(t, len(stmts), 4)
