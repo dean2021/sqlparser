@@ -1,0 +1,21 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "test_driver",
+    srcs = [
+        "test_driver.go",
+        "test_driver_datum.go",
+        "test_driver_helper.go",
+        "test_driver_mydecimal.go",
+    ],
+    importpath = "github.com/dean2021/sqlparser/test_driver",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//sqlparser/ast",
+        "//sqlparser/charset",
+        "//sqlparser/format",
+        "//sqlparser/mysql",
+        "//sqlparser/types",
+        "@com_github_pingcap_errors//:errors",
+    ],
+)

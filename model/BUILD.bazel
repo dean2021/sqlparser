@@ -1,0 +1,41 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "model",
+    srcs = [
+        "ddl.go",
+        "flags.go",
+        "model.go",
+        "reorg.go",
+    ],
+    importpath = "github.com/dean2021/sqlparser/model",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//sqlparser/auth",
+        "//sqlparser/charset",
+        "//sqlparser/duration",
+        "//sqlparser/mysql",
+        "//sqlparser/terror",
+        "//sqlparser/types",
+        "@com_github_pingcap_errors//:errors",
+    ],
+)
+
+go_test(
+    name = "model_test",
+    timeout = "short",
+    srcs = [
+        "ddl_test.go",
+        "model_test.go",
+    ],
+    embed = [":model"],
+    flaky = True,
+    shard_count = 21,
+    deps = [
+        "//sqlparser/charset",
+        "//sqlparser/mysql",
+        "//sqlparser/terror",
+        "//sqlparser/types",
+        "@com_github_stretchr_testify//require",
+    ],
+)

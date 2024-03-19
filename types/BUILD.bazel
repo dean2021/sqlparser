@@ -1,0 +1,39 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "types",
+    srcs = [
+        "etc.go",
+        "eval_type.go",
+        "field_type.go",
+    ],
+    importpath = "github.com/dean2021/sqlparser/types",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//sqlparser/charset",
+        "//sqlparser/format",
+        "//sqlparser/mysql",
+        "//sqlparser/terror",
+        "@com_github_cznic_mathutil//:mathutil",
+    ],
+)
+
+go_test(
+    name = "types_test",
+    timeout = "short",
+    srcs = [
+        "etc_test.go",
+        "field_type_test.go",
+    ],
+    embed = [":types"],
+    flaky = True,
+    shard_count = 6,
+    deps = [
+        "//sqlparser",
+        "//sqlparser/ast",
+        "//sqlparser/charset",
+        "//sqlparser/mysql",
+        "//sqlparser/test_driver",
+        "@com_github_stretchr_testify//require",
+    ],
+)

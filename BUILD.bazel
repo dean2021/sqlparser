@@ -1,0 +1,67 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+exports_files([
+    "go.mod",
+    "go.sum",
+])
+
+go_library(
+    name = "parser",
+    srcs = [
+        "digester.go",
+        "generate.go",
+        "hintparser.go",
+        "hintparserimpl.go",
+        "keywords.go",
+        "lexer.go",
+        "misc.go",
+        "parser.go",
+        "yy_parser.go",
+    ],
+    importpath = "github.com/dean2021/sqlparser",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//sqlparser/ast",
+        "//sqlparser/auth",
+        "//sqlparser/charset",
+        "//sqlparser/duration",
+        "//sqlparser/model",
+        "//sqlparser/mysql",
+        "//sqlparser/opcode",
+        "//sqlparser/terror",
+        "//sqlparser/tidb",
+        "//sqlparser/types",
+        "@com_github_pingcap_errors//:errors",
+    ],
+)
+
+go_test(
+    name = "parser_test",
+    timeout = "short",
+    srcs = [
+        "consistent_test.go",
+        "digester_test.go",
+        "hintparser_test.go",
+        "keywords_test.go",
+        "lexer_test.go",
+        "main_test.go",
+        "parser_test.go",
+    ],
+    data = glob(["**"]),
+    embed = [":parser"],
+    flaky = True,
+    shard_count = 50,
+    deps = [
+        "//sqlparser/ast",
+        "//sqlparser/charset",
+        "//sqlparser/format",
+        "//sqlparser/model",
+        "//sqlparser/mysql",
+        "//sqlparser/opcode",
+        "//sqlparser/terror",
+        "//sqlparser/test_driver",
+        "@com_github_pingcap_errors//:errors",
+        "@com_github_stretchr_testify//require",
+        "@org_uber_go_goleak//:goleak",
+    ],
+)
