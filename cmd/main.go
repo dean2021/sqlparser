@@ -160,7 +160,7 @@ func main() {
 	//		continue
 	//	}
 
-	node, err := parse(`select CUME_DIST('abc123')`)
+	node, err := parse(`SELECT concat(1<2,1,0)`)
 	//select substring(1)
 	//select substrings(1)
 	if err != nil {

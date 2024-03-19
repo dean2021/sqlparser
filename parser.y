@@ -907,20 +907,21 @@ import (
 
 %token not2
 %type	<expr>
-	Expression                      "expression"
-	MaxValueOrExpression            "maxvalue or expression"
-	DefaultOrExpression             "default or expression"
-	BoolPri                         "boolean primary expression"
-	ExprOrDefault                   "expression or default"
-	PredicateExpr                   "Predicate expression factor"
-	SetExpr                         "Set variable statement value's expression"
-	BitExpr                         "bit expression"
-	SimpleExpr                      "simple expression"
-	SimpleIdent                     "Simple Identifier expression"
-	SumExpr                         "aggregate functions"
-	FunctionCallGeneric             "Function call with Identifier"
-	FunctionCallKeyword             "Function call with keyword as function name"
-	FunctionCallNonKeyword          "Function call with nonkeyword as function name"
+	Expression           "expression"
+	MaxValueOrExpression "maxvalue or expression"
+	DefaultOrExpression  "default or expression"
+	BoolPri              "boolean primary expression"
+	ExprOrDefault        "expression or default"
+	PredicateExpr        "Predicate expression factor"
+	SetExpr              "Set variable statement value's expression"
+	BitExpr              "bit expression"
+	SimpleExpr           "simple expression"
+	SimpleIdent          "Simple Identifier expression"
+	SumExpr              "aggregate functions"
+	FunctionCallGeneric  "Function call with Identifier"
+
+	//	FunctionCallKeyword             "Function call with keyword as function name"
+	//	FunctionCallNonKeyword          "Function call with nonkeyword as function name"
 	Literal                         "literal value"
 	Variable                        "User or system variable"
 	SystemVariable                  "System defined variable name"
@@ -6650,7 +6651,7 @@ UnReservedKeyword:
 |	"SUBPARTITION"
 |	"TABLES"
 |	"TABLESPACE"
-|	"TEXT"
+//|	"TEXT"
 |	"THAN"
 |	"TIME" %prec lowerThanStringLitToken
 |	"TIMESTAMP" %prec lowerThanStringLitToken
@@ -7900,244 +7901,6 @@ FunctionNameDatetimePrecision:
 |	"LOCALTIMESTAMP"
 |	"UTC_TIME"
 |	"UTC_TIMESTAMP"
-
-FunctionCallKeyword:
-	FunctionNameConflict '(' ExpressionListOpt ')'
-	{
-		$$ = &ast.FuncCallExpr{FnName: model.NewCIStr($1), Args: $3.([]ast.ExprNode)}
-	}
-|	builtinUser '(' ExpressionListOpt ')'
-	{
-		$$ = &ast.FuncCallExpr{FnName: model.NewCIStr($1), Args: $3.([]ast.ExprNode)}
-	}
-|	FunctionNameOptionalBraces OptionalBraces
-	{
-		$$ = &ast.FuncCallExpr{FnName: model.NewCIStr($1)}
-	}
-|	builtinCurDate '(' ')'
-	{
-		$$ = &ast.FuncCallExpr{FnName: model.NewCIStr($1)}
-	}
-|	FunctionNameDatetimePrecision FuncDatetimePrec
-	{
-		args := []ast.ExprNode{}
-		if $2 != nil {
-			args = append(args, $2.(ast.ExprNode))
-		}
-		$$ = &ast.FuncCallExpr{FnName: model.NewCIStr($1), Args: args}
-	}
-|	"CHAR" '(' ExpressionList ')'
-	{
-		nilVal := ast.NewValueExpr(nil, parser.charset, parser.collation)
-		args := $3.([]ast.ExprNode)
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr(ast.CharFunc),
-			Args:   append(args, nilVal),
-		}
-	}
-|	"CHAR" '(' ExpressionList "USING" CharsetName ')'
-	{
-		charset1 := ast.NewValueExpr($5, "", "")
-		args := $3.([]ast.ExprNode)
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr(ast.CharFunc),
-			Args:   append(args, charset1),
-		}
-	}
-|	"DATE" stringLit
-	{
-		expr := ast.NewValueExpr($2, "", "")
-		$$ = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.DateLiteral), Args: []ast.ExprNode{expr}}
-	}
-|	"TIME" stringLit
-	{
-		expr := ast.NewValueExpr($2, "", "")
-		$$ = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.TimeLiteral), Args: []ast.ExprNode{expr}}
-	}
-|	"TIMESTAMP" stringLit
-	{
-		expr := ast.NewValueExpr($2, "", "")
-		$$ = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.TimestampLiteral), Args: []ast.ExprNode{expr}}
-	}
-|	"INSERT" '(' ExpressionListOpt ')'
-	{
-		$$ = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.InsertFunc), Args: $3.([]ast.ExprNode)}
-	}
-|	"MOD" '(' BitExpr ',' BitExpr ')'
-	{
-		$$ = &ast.BinaryOperationExpr{Op: opcode.Mod, L: $3, R: $5}
-	}
-|	"PASSWORD" '(' ExpressionListOpt ')'
-	{
-		$$ = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.PasswordFunc), Args: $3.([]ast.ExprNode)}
-	}
-
-FunctionCallNonKeyword:
-	builtinCurTime '(' FuncDatetimePrecListOpt ')'
-	{
-		$$ = &ast.FuncCallExpr{FnName: model.NewCIStr($1), Args: $3.([]ast.ExprNode)}
-	}
-|	builtinSysDate '(' FuncDatetimePrecListOpt ')'
-	{
-		$$ = &ast.FuncCallExpr{FnName: model.NewCIStr($1), Args: $3.([]ast.ExprNode)}
-	}
-|	FunctionNameDateArithMultiForms '(' Expression ',' Expression ')'
-	{
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args: []ast.ExprNode{
-				$3,
-				$5,
-				&ast.TimeUnitExpr{Unit: ast.TimeUnitDay},
-			},
-		}
-	}
-|	FunctionNameDateArithMultiForms '(' Expression ',' "INTERVAL" Expression TimeUnit ')'
-	{
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args: []ast.ExprNode{
-				$3,
-				$6,
-				&ast.TimeUnitExpr{Unit: $7.(ast.TimeUnitType)},
-			},
-		}
-	}
-|	FunctionNameDateArith '(' Expression ',' "INTERVAL" Expression TimeUnit ')'
-	{
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args: []ast.ExprNode{
-				$3,
-				$6,
-				&ast.TimeUnitExpr{Unit: $7.(ast.TimeUnitType)},
-			},
-		}
-	}
-|	builtinExtract '(' TimeUnit "FROM" Expression ')'
-	{
-		timeUnit := &ast.TimeUnitExpr{Unit: $3.(ast.TimeUnitType)}
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args:   []ast.ExprNode{timeUnit, $5},
-		}
-	}
-|	"GET_FORMAT" '(' GetFormatSelector ',' Expression ')'
-	{
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args: []ast.ExprNode{
-				&ast.GetFormatSelectorExpr{Selector: $3.(ast.GetFormatSelectorType)},
-				$5,
-			},
-		}
-	}
-|	builtinPosition '(' BitExpr "IN" Expression ')'
-	{
-		$$ = &ast.FuncCallExpr{FnName: model.NewCIStr($1), Args: []ast.ExprNode{$3, $5}}
-	}
-|	builtinSubstring '(' Expression ',' Expression ')'
-	{
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args:   []ast.ExprNode{$3, $5},
-		}
-	}
-|	builtinSubstring '(' Expression "FROM" Expression ')'
-	{
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args:   []ast.ExprNode{$3, $5},
-		}
-	}
-|	builtinSubstring '(' Expression ',' Expression ',' Expression ')'
-	{
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args:   []ast.ExprNode{$3, $5, $7},
-		}
-	}
-|	builtinSubstring '(' Expression "FROM" Expression "FOR" Expression ')'
-	{
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args:   []ast.ExprNode{$3, $5, $7},
-		}
-	}
-|	"TIMESTAMPADD" '(' TimestampUnit ',' Expression ',' Expression ')'
-	{
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args:   []ast.ExprNode{&ast.TimeUnitExpr{Unit: $3.(ast.TimeUnitType)}, $5, $7},
-		}
-	}
-|	"TIMESTAMPDIFF" '(' TimestampUnit ',' Expression ',' Expression ')'
-	{
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args:   []ast.ExprNode{&ast.TimeUnitExpr{Unit: $3.(ast.TimeUnitType)}, $5, $7},
-		}
-	}
-|	builtinTrim '(' Expression ')'
-	{
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args:   []ast.ExprNode{$3},
-		}
-	}
-|	builtinTrim '(' Expression "FROM" Expression ')'
-	{
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args:   []ast.ExprNode{$5, $3},
-		}
-	}
-|	builtinTrim '(' TrimDirection "FROM" Expression ')'
-	{
-		spaceVal := ast.NewValueExpr(" ", parser.charset, parser.collation)
-		direction := &ast.TrimDirectionExpr{Direction: $3.(ast.TrimDirectionType)}
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args:   []ast.ExprNode{$5, spaceVal, direction},
-		}
-	}
-|	builtinTrim '(' TrimDirection Expression "FROM" Expression ')'
-	{
-		direction := &ast.TrimDirectionExpr{Direction: $3.(ast.TrimDirectionType)}
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args:   []ast.ExprNode{$6, $4, direction},
-		}
-	}
-|	weightString '(' Expression ')'
-	{
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args:   []ast.ExprNode{$3},
-		}
-	}
-|	weightString '(' Expression "AS" Char FieldLen ')'
-	{
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args:   []ast.ExprNode{$3, ast.NewValueExpr("CHAR", parser.charset, parser.collation), ast.NewValueExpr($6, parser.charset, parser.collation)},
-		}
-	}
-|	weightString '(' Expression "AS" "BINARY" FieldLen ')'
-	{
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args:   []ast.ExprNode{$3, ast.NewValueExpr("BINARY", parser.charset, parser.collation), ast.NewValueExpr($6, parser.charset, parser.collation)},
-		}
-	}
-|	FunctionNameSequence
-|	builtinTranslate '(' Expression ',' Expression ',' Expression ')'
-	{
-		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr($1),
-			Args:   []ast.ExprNode{$3, $5, $7},
-		}
-	}
 
 GetFormatSelector:
 	"DATE"
@@ -15131,6 +14894,12 @@ CommonExpressionStmt:
 	{
 		$$ = &ast.CommonExpressionStmt{
 			Expr: $3,
+		}
+	}
+|	Expression LimitClause
+	{
+		$$ = &ast.CommonExpressionStmt{
+			Expr: $1,
 		}
 	}
 |	Expression WaitForStmt
