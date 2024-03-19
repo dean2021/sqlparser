@@ -706,6 +706,8 @@ var tokenMap = map[string]int{
 	"SEND_CREDENTIALS_TO_TIKV": sendCredentialsToTiKV,
 	"SEPARATOR":                separator,
 	"SEQUENCE":                 sequence,
+	"DELAY":                    delay,
+	"WAITFOR":                  waitfor,
 	"SERIAL":                   serial,
 	"SERIALIZABLE":             serializable,
 	"SESSION":                  session,
