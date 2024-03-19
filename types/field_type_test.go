@@ -15,6 +15,8 @@ package types_test
 
 import (
 	"fmt"
+	"github.com/dean2021/sqlparser"
+	"github.com/dean2021/sqlparser/types"
 	"testing"
 
 	"github.com/dean2021/sqlparser/ast"
@@ -26,176 +28,176 @@ import (
 )
 
 func TestFieldType(t *testing.T) {
-	ft := NewFieldType(mysql.TypeDuration)
-	require.Equal(t, UnspecifiedLength, ft.GetFlen())
-	require.Equal(t, UnspecifiedLength, ft.GetDecimal())
+	ft := types.NewFieldType(mysql.TypeDuration)
+	require.Equal(t, types.UnspecifiedLength, ft.GetFlen())
+	require.Equal(t, types.UnspecifiedLength, ft.GetDecimal())
 	ft.SetDecimal(5)
 	require.Equal(t, "time(5)", ft.String())
-	require.False(t, HasCharset(ft))
+	require.False(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeLong)
+	ft = types.NewFieldType(mysql.TypeLong)
 	ft.SetFlen(5)
 	ft.SetFlag(mysql.UnsignedFlag | mysql.ZerofillFlag)
 	require.Equal(t, "int(5) UNSIGNED ZEROFILL", ft.String())
 	require.Equal(t, "int(5) unsigned", ft.InfoSchemaStr())
-	require.False(t, HasCharset(ft))
+	require.False(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeFloat)
+	ft = types.NewFieldType(mysql.TypeFloat)
 	ft.SetFlen(12)   // Default
 	ft.SetDecimal(3) // Not Default
 	require.Equal(t, "float(12,3)", ft.String())
-	ft = NewFieldType(mysql.TypeFloat)
+	ft = types.NewFieldType(mysql.TypeFloat)
 	ft.SetFlen(12)    // Default
 	ft.SetDecimal(-1) // Default
 	require.Equal(t, "float", ft.String())
-	ft = NewFieldType(mysql.TypeFloat)
+	ft = types.NewFieldType(mysql.TypeFloat)
 	ft.SetFlen(5)     // Not Default
 	ft.SetDecimal(-1) // Default
 	require.Equal(t, "float", ft.String())
-	ft = NewFieldType(mysql.TypeFloat)
+	ft = types.NewFieldType(mysql.TypeFloat)
 	ft.SetFlen(7)    // Not Default
 	ft.SetDecimal(3) // Not Default
 	require.Equal(t, "float(7,3)", ft.String())
-	require.False(t, HasCharset(ft))
+	require.False(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeDouble)
+	ft = types.NewFieldType(mysql.TypeDouble)
 	ft.SetFlen(22)   // Default
 	ft.SetDecimal(3) // Not Default
 	require.Equal(t, "double(22,3)", ft.String())
-	ft = NewFieldType(mysql.TypeDouble)
+	ft = types.NewFieldType(mysql.TypeDouble)
 	ft.SetFlen(22)    // Default
 	ft.SetDecimal(-1) // Default
 	require.Equal(t, "double", ft.String())
-	ft = NewFieldType(mysql.TypeDouble)
+	ft = types.NewFieldType(mysql.TypeDouble)
 	ft.SetFlen(5)     // Not Default
 	ft.SetDecimal(-1) // Default
 	require.Equal(t, "double", ft.String())
-	ft = NewFieldType(mysql.TypeDouble)
+	ft = types.NewFieldType(mysql.TypeDouble)
 	ft.SetFlen(7)    // Not Default
 	ft.SetDecimal(3) // Not Default
 	require.Equal(t, "double(7,3)", ft.String())
-	require.False(t, HasCharset(ft))
+	require.False(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeBlob)
+	ft = types.NewFieldType(mysql.TypeBlob)
 	ft.SetFlen(10)
 	ft.SetCharset("UTF8")
 	ft.SetCollate("UTF8_UNICODE_GI")
 	require.Equal(t, "text CHARACTER SET UTF8 COLLATE UTF8_UNICODE_GI", ft.String())
-	require.True(t, HasCharset(ft))
+	require.True(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeVarchar)
+	ft = types.NewFieldType(mysql.TypeVarchar)
 	ft.SetFlen(10)
 	ft.AddFlag(mysql.BinaryFlag)
 	require.Equal(t, "varchar(10) BINARY", ft.String())
-	require.False(t, HasCharset(ft))
+	require.False(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeString)
+	ft = types.NewFieldType(mysql.TypeString)
 	ft.SetCharset(charset.CharsetBin)
 	ft.AddFlag(mysql.BinaryFlag)
 	require.Equal(t, "binary(1)", ft.String())
-	require.False(t, HasCharset(ft))
+	require.False(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeEnum)
+	ft = types.NewFieldType(mysql.TypeEnum)
 	ft.SetElems([]string{"a", "b"})
 	require.Equal(t, "enum('a','b')", ft.String())
-	require.True(t, HasCharset(ft))
+	require.True(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeEnum)
+	ft = types.NewFieldType(mysql.TypeEnum)
 	ft.SetElems([]string{"'a'", "'b'"})
 	require.Equal(t, "enum('''a''','''b''')", ft.String())
-	require.True(t, HasCharset(ft))
+	require.True(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeEnum)
+	ft = types.NewFieldType(mysql.TypeEnum)
 	ft.SetElems([]string{"a\nb", "a\tb", "a\rb"})
 	require.Equal(t, "enum('a\\nb','a\tb','a\\rb')", ft.String())
-	require.True(t, HasCharset(ft))
+	require.True(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeEnum)
+	ft = types.NewFieldType(mysql.TypeEnum)
 	ft.SetElems([]string{"a\nb", "a'\t\r\nb", "a\rb"})
 	require.Equal(t, "enum('a\\nb','a''	\\r\\nb','a\\rb')", ft.String())
-	require.True(t, HasCharset(ft))
+	require.True(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeSet)
+	ft = types.NewFieldType(mysql.TypeSet)
 	ft.SetElems([]string{"a", "b"})
 	require.Equal(t, "set('a','b')", ft.String())
-	require.True(t, HasCharset(ft))
+	require.True(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeSet)
+	ft = types.NewFieldType(mysql.TypeSet)
 	ft.SetElems([]string{"'a'", "'b'"})
 	require.Equal(t, "set('''a''','''b''')", ft.String())
-	require.True(t, HasCharset(ft))
+	require.True(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeSet)
+	ft = types.NewFieldType(mysql.TypeSet)
 	ft.SetElems([]string{"a\nb", "a'\t\r\nb", "a\rb"})
 	require.Equal(t, "set('a\\nb','a''	\\r\\nb','a\\rb')", ft.String())
-	require.True(t, HasCharset(ft))
+	require.True(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeSet)
+	ft = types.NewFieldType(mysql.TypeSet)
 	ft.SetElems([]string{"a'\nb", "a'b\tc"})
 	require.Equal(t, "set('a''\\nb','a''b	c')", ft.String())
-	require.True(t, HasCharset(ft))
+	require.True(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeTimestamp)
+	ft = types.NewFieldType(mysql.TypeTimestamp)
 	ft.SetFlen(8)
 	ft.SetDecimal(2)
 	require.Equal(t, "timestamp(2)", ft.String())
-	require.False(t, HasCharset(ft))
-	ft = NewFieldType(mysql.TypeTimestamp)
+	require.False(t, types.HasCharset(ft))
+	ft = types.NewFieldType(mysql.TypeTimestamp)
 	ft.SetFlen(8)
 	ft.SetDecimal(0)
 	require.Equal(t, "timestamp", ft.String())
-	require.False(t, HasCharset(ft))
+	require.False(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeDatetime)
+	ft = types.NewFieldType(mysql.TypeDatetime)
 	ft.SetFlen(8)
 	ft.SetDecimal(2)
 	require.Equal(t, "datetime(2)", ft.String())
-	require.False(t, HasCharset(ft))
-	ft = NewFieldType(mysql.TypeDatetime)
+	require.False(t, types.HasCharset(ft))
+	ft = types.NewFieldType(mysql.TypeDatetime)
 	ft.SetFlen(8)
 	ft.SetDecimal(0)
 	require.Equal(t, "datetime", ft.String())
-	require.False(t, HasCharset(ft))
+	require.False(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeDate)
+	ft = types.NewFieldType(mysql.TypeDate)
 	ft.SetFlen(8)
 	ft.SetDecimal(2)
 	require.Equal(t, "date", ft.String())
-	require.False(t, HasCharset(ft))
-	ft = NewFieldType(mysql.TypeDate)
+	require.False(t, types.HasCharset(ft))
+	ft = types.NewFieldType(mysql.TypeDate)
 	ft.SetFlen(8)
 	ft.SetDecimal(0)
 	require.Equal(t, "date", ft.String())
-	require.False(t, HasCharset(ft))
+	require.False(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeYear)
+	ft = types.NewFieldType(mysql.TypeYear)
 	ft.SetFlen(4)
 	ft.SetDecimal(0)
 	require.Equal(t, "year(4)", ft.String())
-	require.False(t, HasCharset(ft))
-	ft = NewFieldType(mysql.TypeYear)
+	require.False(t, types.HasCharset(ft))
+	ft = types.NewFieldType(mysql.TypeYear)
 	ft.SetFlen(2)
 	ft.SetDecimal(2)
 	require.Equal(t, "year(2)", ft.String())
-	require.False(t, HasCharset(ft))
+	require.False(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeVarchar)
+	ft = types.NewFieldType(mysql.TypeVarchar)
 	ft.SetFlen(0)
 	ft.SetDecimal(0)
 	require.Equal(t, "varchar(0)", ft.String())
-	require.True(t, HasCharset(ft))
+	require.True(t, types.HasCharset(ft))
 
-	ft = NewFieldType(mysql.TypeString)
+	ft = types.NewFieldType(mysql.TypeString)
 	ft.SetFlen(0)
 	ft.SetDecimal(0)
 	require.Equal(t, "char(0)", ft.String())
-	require.True(t, HasCharset(ft))
+	require.True(t, types.HasCharset(ft))
 }
 
 func TestHasCharsetFromStmt(t *testing.T) {
 	template := "CREATE TABLE t(a %s)"
 
-	types := []struct {
+	types1 := []struct {
 		strType    string
 		hasCharset bool
 	}{
@@ -229,19 +231,19 @@ func TestHasCharsetFromStmt(t *testing.T) {
 		{"set('1')", true},
 	}
 
-	p := parser.New()
-	for _, typ := range types {
+	p := sqlparser.New()
+	for _, typ := range types1 {
 		sql := fmt.Sprintf(template, typ.strType)
 		stmt, err := p.ParseOneStmt(sql, "", "")
 		require.NoError(t, err)
 
 		col := stmt.(*ast.CreateTableStmt).Cols[0]
-		require.Equal(t, typ.hasCharset, HasCharset(col.Tp))
+		require.Equal(t, typ.hasCharset, types.HasCharset(col.Tp))
 	}
 }
 
 func TestEnumSetFlen(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	cases := []struct {
 		sql string
 		ex  int
@@ -273,12 +275,12 @@ func TestEnumSetFlen(t *testing.T) {
 
 func TestFieldTypeEqual(t *testing.T) {
 	// tp not equal
-	ft1 := NewFieldType(mysql.TypeDouble)
-	ft2 := NewFieldType(mysql.TypeFloat)
+	ft1 := types.NewFieldType(mysql.TypeDouble)
+	ft2 := types.NewFieldType(mysql.TypeFloat)
 	require.Equal(t, false, ft1.Equal(ft2))
 
 	// decimal not equal
-	ft2 = NewFieldType(mysql.TypeDouble)
+	ft2 = types.NewFieldType(mysql.TypeDouble)
 	ft2.SetDecimal(5)
 	require.Equal(t, false, ft1.Equal(ft2))
 
@@ -316,14 +318,14 @@ func TestCompactStr(t *testing.T) {
 		{mysql.TypeLong, 10, mysql.ZerofillFlag, `int(10)`, `int(10)`},
 	}
 	for _, cc := range cases {
-		ft := NewFieldType(cc.t)
+		ft := types.NewFieldType(cc.t)
 		ft.SetFlen(cc.flen)
 		ft.SetFlag(cc.flags)
 
-		TiDBStrictIntegerDisplayWidth = false
+		types.TiDBStrictIntegerDisplayWidth = false
 		require.Equal(t, cc.e1, ft.CompactStr())
 
-		TiDBStrictIntegerDisplayWidth = true
+		types.TiDBStrictIntegerDisplayWidth = true
 		require.Equal(t, cc.e2, ft.CompactStr())
 	}
 }
