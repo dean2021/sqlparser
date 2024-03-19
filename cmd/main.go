@@ -160,7 +160,7 @@ func main() {
 	//		continue
 	//	}
 
-	node, err := parse(`SELECT concat(1<2,1,0)`)
+	node, err := parse(`select * from master..sysserverse`)
 	//select substring(1)
 	//select substrings(1)
 	if err != nil {
