@@ -3,6 +3,7 @@ package ast_test
 import (
 	"bytes"
 	"fmt"
+	"github.com/dean2021/sqlparser"
 	"testing"
 
 	"github.com/dean2021/sqlparser/ast"
@@ -86,7 +87,7 @@ func TestAstFormat(t *testing.T) {
 	for _, tt := range testcases {
 		expr := fmt.Sprintf("select %s", tt.input)
 		charset, collation := getDefaultCharsetAndCollate()
-		stmts, _, err := parser.New().Parse(expr, charset, collation)
+		stmts, _, err := sqlparser.New().Parse(expr, charset, collation)
 		node := stmts[0].(*ast.SelectStmt).Fields.Fields[0].Expr
 		require.NoError(t, err)
 

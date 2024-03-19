@@ -15,6 +15,7 @@ package ast_test
 
 import (
 	"fmt"
+	"github.com/dean2021/sqlparser"
 	"testing"
 
 	"github.com/dean2021/sqlparser/ast"
@@ -106,7 +107,7 @@ jobAbbr char(4) not null,
 constraint foreign key (jobabbr) references ffxi_jobtype (jobabbr) on delete cascade on update cascade
 );
 `
-	parse := parser.New()
+	parse := sqlparser.New()
 	stmts, _, err := parse.Parse(sql, "", "")
 	require.NoError(t, err)
 	for _, stmt := range stmts {
@@ -126,7 +127,7 @@ show create table t;
 load data infile '/tmp/t.csv' into table t fields terminated by 'ab' enclosed by 'b';
 import into t from '/file.csv'`
 
-	p := parser.New()
+	p := sqlparser.New()
 	stmts, _, err := p.Parse(sql, "", "")
 	require.NoError(t, err)
 	for _, stmt := range stmts {
@@ -141,7 +142,7 @@ func TestChangeStmt(t *testing.T) {
 change drainer to node_state='paused' for node_id '127.0.0.1:8249';
 shutdown;`
 
-	p := parser.New()
+	p := sqlparser.New()
 	stmts, _, err := p.Parse(sql, "", "")
 	require.NoError(t, err)
 	for _, stmt := range stmts {
@@ -351,7 +352,7 @@ func TestBRIESecureText(t *testing.T) {
 		},
 	}
 
-	p := parser.New()
+	p := sqlparser.New()
 	for _, tc := range testCases {
 		comment := fmt.Sprintf("input = %s", tc.input)
 		node, err := p.ParseOneStmt(tc.input, "", "")

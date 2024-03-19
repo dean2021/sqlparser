@@ -11,10 +11,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ast_test
+package ast
 
 import (
 	"fmt"
+	"github.com/dean2021/sqlparser"
 	"testing"
 
 	"github.com/dean2021/sqlparser/format"
@@ -628,7 +629,7 @@ func TestImportIntoSecureText(t *testing.T) {
 		},
 	}
 
-	p := parser.New()
+	p := sqlparser.New()
 	for _, tc := range testCases {
 		comment := fmt.Sprintf("input = %s", tc.input)
 		node, err := p.ParseOneStmt(tc.input, "", "")
@@ -640,7 +641,7 @@ func TestImportIntoSecureText(t *testing.T) {
 }
 
 func TestImportIntoFromSelectInvalidStmt(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	_, err := p.ParseOneStmt("IMPORT INTO t1(a, @1) FROM select * from t2;", "", "")
 	require.ErrorContains(t, err, "Cannot use user variable(1) in IMPORT INTO FROM SELECT statement")
 	_, err = p.ParseOneStmt("IMPORT INTO t1(a, @b) FROM select * from t2;", "", "")

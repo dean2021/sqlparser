@@ -17,6 +17,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/dean2021/sqlparser"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -69,11 +70,11 @@ func TestNormalize(t *testing.T) {
 		{"insert into t values (1)", "insert into `t` values ( ? )"},
 	}
 	for _, test := range tests_for_generic_normalization_rules {
-		normalized := parser.Normalize(test.input, "ON")
-		digest := parser.DigestNormalized(normalized)
+		normalized := sqlparser.Normalize(test.input, "ON")
+		digest := sqlparser.DigestNormalized(normalized)
 		require.Equal(t, test.expect, normalized)
 
-		normalized2, digest2 := parser.NormalizeDigest(test.input)
+		normalized2, digest2 := sqlparser.NormalizeDigest(test.input)
 		require.Equal(t, normalized, normalized2)
 		require.Equalf(t, digest.String(), digest2.String(), "%+v", test)
 	}
@@ -91,11 +92,11 @@ func TestNormalize(t *testing.T) {
 		{"select * from t where a in(1, 2, 3)", "select * from `t` where `a` in ( ... )"},
 	}
 	for _, test := range tests_for_binding_specific_rules {
-		normalized := parser.NormalizeForBinding(test.input, false)
-		digest := parser.DigestNormalized(normalized)
+		normalized := sqlparser.NormalizeForBinding(test.input, false)
+		digest := sqlparser.DigestNormalized(normalized)
 		require.Equal(t, test.expect, normalized)
 
-		normalized2, digest2 := parser.NormalizeDigestForBinding(test.input)
+		normalized2, digest2 := sqlparser.NormalizeDigestForBinding(test.input)
 		require.Equal(t, normalized, normalized2)
 		require.Equalf(t, digest.String(), digest2.String(), "%+v", test)
 	}
@@ -112,7 +113,7 @@ func TestNormalizeRedact(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		normalized := parser.Normalize(c.input, "MARKER")
+		normalized := sqlparser.Normalize(c.input, "MARKER")
 		require.Equal(t, c.expect, normalized)
 	}
 }
@@ -159,7 +160,7 @@ func TestNormalizeKeepHint(t *testing.T) {
 		{"select * from `table", "select * from"},
 	}
 	for _, test := range tests {
-		normalized := parser.NormalizeKeepHint(test.input)
+		normalized := sqlparser.NormalizeKeepHint(test.input)
 		require.Equal(t, test.expect, normalized)
 	}
 }
@@ -173,12 +174,12 @@ func TestNormalizeDigest(t *testing.T) {
 		{"select 1 from b where id in (1, 3, '3', 1, 2, 3, 4)", "select ? from `b` where `id` in ( ... )", "e1c8cc2738f596dc24f15ef8eb55e0d902910d7298983496362a7b46dbc0b310"},
 	}
 	for _, test := range tests {
-		normalized, digest := parser.NormalizeDigest(test.sql)
+		normalized, digest := sqlparser.NormalizeDigest(test.sql)
 		require.Equal(t, test.normalized, normalized)
 		require.Equal(t, test.digest, digest.String())
 
-		normalized = parser.Normalize(test.sql, "ON")
-		digest = parser.DigestNormalized(normalized)
+		normalized = sqlparser.Normalize(test.sql, "ON")
+		digest = sqlparser.DigestNormalized(normalized)
 		require.Equal(t, test.normalized, normalized)
 		require.Equal(t, test.digest, digest.String())
 	}
@@ -195,7 +196,7 @@ func TestDigestHashEqForSimpleSQL(t *testing.T) {
 	for _, sqlGroup := range sqlGroups {
 		var d string
 		for _, sql := range sqlGroup {
-			dig := parser.DigestHash(sql)
+			dig := sqlparser.DigestHash(sql)
 			if d == "" {
 				d = dig.String()
 				continue
@@ -212,7 +213,7 @@ func TestDigestHashNotEqForSimpleSQL(t *testing.T) {
 	for _, sqlGroup := range sqlGroups {
 		var d string
 		for _, sql := range sqlGroup {
-			dig := parser.DigestHash(sql)
+			dig := sqlparser.DigestHash(sql)
 			if d == "" {
 				d = dig.String()
 				continue
@@ -224,10 +225,10 @@ func TestDigestHashNotEqForSimpleSQL(t *testing.T) {
 
 func TestGenDigest(t *testing.T) {
 	hash := genRandDigest("abc")
-	digest := parser.NewDigest(hash)
+	digest := sqlparser.NewDigest(hash)
 	require.Equal(t, fmt.Sprintf("%x", hash), digest.String())
 	require.Equal(t, hash, digest.Bytes())
-	digest = parser.NewDigest(nil)
+	digest = sqlparser.NewDigest(nil)
 	require.Equal(t, "", digest.String())
 	require.Nil(t, digest.Bytes())
 }

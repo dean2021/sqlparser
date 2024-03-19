@@ -11,10 +11,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package sqlparser
+package sqlparser_test
 
 import (
-	parser "modernc.org/parser/nquads"
+	"github.com/dean2021/sqlparser"
 	"testing"
 
 	"github.com/dean2021/sqlparser/ast"
@@ -349,7 +349,7 @@ func TestParseHint(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		output, errs := parser.ParseHint("/*+"+tc.input+"*/", tc.mode, parser.Pos{Line: 1})
+		output, errs := sqlparser.ParseHint("/*+"+tc.input+"*/", tc.mode, sqlparser.Pos{Line: 1})
 		require.Lenf(t, errs, len(tc.errs), "input = %s,\n... errs = %q", tc.input, errs)
 		for i, err := range errs {
 			require.Errorf(t, err, "input = %s, i = %d", tc.input, i)

@@ -14,6 +14,7 @@
 package sqlparser_test
 
 import (
+	"github.com/dean2021/sqlparser"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -21,12 +22,12 @@ import (
 
 func TestKeywords(t *testing.T) {
 	// Test for the first keyword
-	require.Equal(t, "ADD", parser.Keywords[0].Word)
-	require.Equal(t, true, parser.Keywords[0].Reserved)
+	require.Equal(t, "ADD", sqlparser.Keywords[0].Word)
+	require.Equal(t, true, sqlparser.Keywords[0].Reserved)
 
 	// Make sure TiDBKeywords are included.
 	found := false
-	for _, kw := range parser.Keywords {
+	for _, kw := range sqlparser.Keywords {
 		if kw.Word == "ADMIN" {
 			found = true
 		}
@@ -35,10 +36,10 @@ func TestKeywords(t *testing.T) {
 }
 
 func TestKeywordsLength(t *testing.T) {
-	require.Equal(t, 644, len(parser.Keywords))
+	require.Equal(t, 644, len(sqlparser.Keywords))
 
 	reservedNr := 0
-	for _, kw := range parser.Keywords {
+	for _, kw := range sqlparser.Keywords {
 		if kw.Reserved {
 			reservedNr += 1
 		}
@@ -47,10 +48,10 @@ func TestKeywordsLength(t *testing.T) {
 }
 
 func TestKeywordsSorting(t *testing.T) {
-	for i, kw := range parser.Keywords {
-		if i > 1 && parser.Keywords[i-1].Word > kw.Word && parser.Keywords[i-1].Section == kw.Section {
+	for i, kw := range sqlparser.Keywords {
+		if i > 1 && sqlparser.Keywords[i-1].Word > kw.Word && sqlparser.Keywords[i-1].Section == kw.Section {
 			t.Errorf("%s should come after %s, please update parser.y and re-generate keywords.go\n",
-				parser.Keywords[i-1].Word, kw.Word)
+				sqlparser.Keywords[i-1].Word, kw.Word)
 		}
 	}
 }

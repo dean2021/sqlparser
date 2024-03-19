@@ -11,9 +11,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ast_test
+package ast
 
 import (
+	"github.com/dean2021/sqlparser"
 	"testing"
 
 	"github.com/dean2021/sqlparser/mysql"
@@ -165,7 +166,7 @@ func TestConvert(t *testing.T) {
 		{`SELECT CONVERT("abc" USING CONCAT("utf", "8"))`, "", `[parser:1115]Unknown character set: 'CONCAT'`},
 	}
 	for _, testCase := range cases {
-		stmt, err := parser.New().ParseOneStmt(testCase.SQL, "", "")
+		stmt, err := sqlparser.New().ParseOneStmt(testCase.SQL, "", "")
 		if testCase.ErrorMessage != "" {
 			require.EqualError(t, err, testCase.ErrorMessage)
 			continue
@@ -194,7 +195,7 @@ func TestChar(t *testing.T) {
 		{`SELECT CHAR("abc" USING CONCAT("utf", "8"))`, "", `[parser:1115]Unknown character set: 'CONCAT'`},
 	}
 	for _, testCase := range cases {
-		stmt, err := parser.New().ParseOneStmt(testCase.SQL, "", "")
+		stmt, err := sqlparser.New().ParseOneStmt(testCase.SQL, "", "")
 		if testCase.ErrorMessage != "" {
 			require.EqualError(t, err, testCase.ErrorMessage)
 			continue

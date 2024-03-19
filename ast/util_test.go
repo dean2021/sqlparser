@@ -11,10 +11,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ast_test
+package ast
 
 import (
 	"fmt"
+	"github.com/dean2021/sqlparser"
+	"github.com/dean2021/sqlparser/format"
 	"strings"
 	"testing"
 
@@ -171,11 +173,11 @@ type NodeRestoreTestCase struct {
 }
 
 func runNodeRestoreTest(t *testing.T, nodeTestCases []NodeRestoreTestCase, template string, extractNodeFunc func(node Node) Node) {
-	runNodeRestoreTestWithFlags(t, nodeTestCases, template, extractNodeFunc, DefaultRestoreFlags)
+	runNodeRestoreTestWithFlags(t, nodeTestCases, template, extractNodeFunc, format.Defaultformat.RestoreFlags)
 }
 
-func runNodeRestoreTestWithFlags(t *testing.T, nodeTestCases []NodeRestoreTestCase, template string, extractNodeFunc func(node Node) Node, flags RestoreFlags) {
-	p := parser.New()
+func runNodeRestoreTestWithFlags(t *testing.T, nodeTestCases []NodeRestoreTestCase, template string, extractNodeFunc func(node Node) Node, flags format.RestoreFlags) {
+	p := sqlparser.New()
 	p.EnableWindowFunc(true)
 	for _, testCase := range nodeTestCases {
 		sourceSQL := fmt.Sprintf(template, testCase.sourceSQL)
@@ -184,7 +186,7 @@ func runNodeRestoreTestWithFlags(t *testing.T, nodeTestCases []NodeRestoreTestCa
 		comment := fmt.Sprintf("source %#v", testCase)
 		require.NoError(t, err, comment)
 		var sb strings.Builder
-		err = extractNodeFunc(stmt).Restore(NewRestoreCtx(flags, &sb))
+		err = extractNodeFunc(stmt).Restore(format.NewRestoreCtx(flags, &sb))
 		require.NoError(t, err, comment)
 		restoreSql := fmt.Sprintf(template, sb.String())
 		comment = fmt.Sprintf("source %#v; restore %v", testCase, restoreSql)
@@ -199,8 +201,8 @@ func runNodeRestoreTestWithFlags(t *testing.T, nodeTestCases []NodeRestoreTestCa
 
 // runNodeRestoreTestWithFlagsStmtChange likes runNodeRestoreTestWithFlags but not check if the ASTs are same.
 // Sometimes the AST are different and it's expected.
-func runNodeRestoreTestWithFlagsStmtChange(t *testing.T, nodeTestCases []NodeRestoreTestCase, template string, extractNodeFunc func(node Node) Node, flags RestoreFlags) {
-	p := parser.New()
+func runNodeRestoreTestWithFlagsStmtChange(t *testing.T, nodeTestCases []NodeRestoreTestCase, template string, extractNodeFunc func(node Node) Node, flags format.RestoreFlags) {
+	p := sqlparser.New()
 	p.EnableWindowFunc(true)
 	for _, testCase := range nodeTestCases {
 		sourceSQL := fmt.Sprintf(template, testCase.sourceSQL)
@@ -209,7 +211,7 @@ func runNodeRestoreTestWithFlagsStmtChange(t *testing.T, nodeTestCases []NodeRes
 		comment := fmt.Sprintf("source %#v", testCase)
 		require.NoError(t, err, comment)
 		var sb strings.Builder
-		err = extractNodeFunc(stmt).Restore(NewRestoreCtx(flags, &sb))
+		err = extractNodeFunc(stmt).Restore(format.NewRestoreCtx(flags, &sb))
 		require.NoError(t, err, comment)
 		restoreSql := fmt.Sprintf(template, sb.String())
 		comment = fmt.Sprintf("source %#v; restore %v", testCase, restoreSql)

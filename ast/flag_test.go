@@ -11,28 +11,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ast_test
+package ast
 
 import (
+	"github.com/dean2021/sqlparser"
 	"testing"
 
-	"github.com/dean2021/sqlparser/ast"
 	"github.com/stretchr/testify/require"
 )
 
 func TestHasAggFlag(t *testing.T) {
-	expr := &ast.BetweenExpr{}
+	expr := &BetweenExpr{}
 	flagTests := []struct {
 		flag   uint64
 		hasAgg bool
 	}{
-		{ast.FlagHasAggregateFunc, true},
-		{ast.FlagHasAggregateFunc | ast.FlagHasVariable, true},
-		{ast.FlagHasVariable, false},
+		{FlagHasAggregateFunc, true},
+		{FlagHasAggregateFunc | FlagHasVariable, true},
+		{FlagHasVariable, false},
 	}
 	for _, tt := range flagTests {
 		expr.SetFlag(tt.flag)
-		require.Equal(t, tt.hasAgg, ast.HasAggFlag(expr))
+		require.Equal(t, tt.hasAgg, HasAggFlag(expr))
 	}
 }
 
@@ -43,95 +43,95 @@ func TestFlag(t *testing.T) {
 	}{
 		{
 			"1 between 0 and 2",
-			ast.FlagConstant,
+			FlagConstant,
 		},
 		{
 			"case 1 when 1 then 1 else 0 end",
-			ast.FlagConstant,
+			FlagConstant,
 		},
 		{
 			"case 1 when 1 then 1 else 0 end",
-			ast.FlagConstant,
+			FlagConstant,
 		},
 		{
 			"case 1 when a > 1 then 1 else 0 end",
-			ast.FlagConstant | ast.FlagHasReference,
+			FlagConstant | FlagHasReference,
 		},
 		{
 			"1 = ANY (select 1) OR exists (select 1)",
-			ast.FlagHasSubquery,
+			FlagHasSubquery,
 		},
 		{
 			"1 in (1) or 1 is true or null is null or 'abc' like 'abc' or 'abc' rlike 'abc'",
-			ast.FlagConstant,
+			FlagConstant,
 		},
 		{
 			"row (1, 1) = row (1, 1)",
-			ast.FlagConstant,
+			FlagConstant,
 		},
 		{
 			"(1 + a) > ?",
-			ast.FlagHasReference | ast.FlagHasParamMarker,
+			FlagHasReference | FlagHasParamMarker,
 		},
 		{
 			"trim('abc ')",
-			ast.FlagHasFunc,
+			FlagHasFunc,
 		},
 		{
 			"now() + EXTRACT(YEAR FROM '2009-07-02') + CAST(1 AS UNSIGNED)",
-			ast.FlagHasFunc,
+			FlagHasFunc,
 		},
 		{
 			"substring('abc', 1)",
-			ast.FlagHasFunc,
+			FlagHasFunc,
 		},
 		{
 			"sum(a)",
-			ast.FlagHasAggregateFunc | ast.FlagHasReference,
+			FlagHasAggregateFunc | FlagHasReference,
 		},
 		{
 			"(select 1) as a",
-			ast.FlagHasSubquery,
+			FlagHasSubquery,
 		},
 		{
 			"@auto_commit",
-			ast.FlagHasVariable,
+			FlagHasVariable,
 		},
 		{
 			"default(a)",
-			ast.FlagHasDefault,
+			FlagHasDefault,
 		},
 		{
 			"a is null",
-			ast.FlagHasReference,
+			FlagHasReference,
 		},
 		{
 			"1 is true",
-			ast.FlagConstant,
+			FlagConstant,
 		},
 		{
 			"a in (1, count(*), 3)",
-			ast.FlagConstant | ast.FlagHasReference | ast.FlagHasAggregateFunc,
+			FlagConstant | FlagHasReference | FlagHasAggregateFunc,
 		},
 		{
 			"'Michael!' REGEXP '.*'",
-			ast.FlagConstant,
+			FlagConstant,
 		},
 		{
 			"a REGEXP '.*'",
-			ast.FlagHasReference,
+			FlagHasReference,
 		},
 		{
 			"-a",
-			ast.FlagHasReference,
+			FlagHasReference,
 		},
 	}
-	p := parser.New()
+	p := sqlparser.New()
 	for _, tt := range flagTests {
 		stmt, err := p.ParseOneStmt("select "+tt.expr, "", "")
 		require.NoError(t, err)
-		selectStmt := stmt.(*ast.SelectStmt)
-		ast.SetFlag(selectStmt)
+		selectStmt := stmt.(*SelectStmt)
+		SetFlag(selectStmt)
 		expr := selectStmt.Fields.Fields[0].Expr
 		require.Equalf(t, tt.flag, expr.GetFlag(), "For %s", tt.expr)
 	}

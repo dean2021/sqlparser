@@ -15,6 +15,7 @@ package ast_test
 
 import (
 	"fmt"
+	"github.com/dean2021/sqlparser"
 	"testing"
 
 	"github.com/dean2021/sqlparser/ast"
@@ -41,7 +42,7 @@ func TestProcedureVisitorCover(t *testing.T) {
 	}
 }
 func TestProcedure(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	testcases := []string{"create procedure proc_2() begin declare s varchar(100) DEFAULT FROM_UNIXTIME(1447430881);select s;SELECT * FROM `t1`;SELECT * FROM `t2`;INSERT INTO `t1` VALUES (111);END;",
 		"create procedure if not exists proc_2() begin declare s varchar(100) DEFAULT FROM_UNIXTIME(1447430881);select s;SELECT * FROM `t1`;SELECT * FROM `t2`;INSERT INTO `t1` VALUES (111);END;",
 		"create procedure if not exists proc_2(in id int,inout id2 int,out id3 int) begin declare s varchar(100) DEFAULT FROM_UNIXTIME(1447430881);select s;SELECT * FROM `t1`;SELECT * FROM `t2`;INSERT INTO `t1` VALUES (111);END;",
@@ -111,7 +112,7 @@ func TestProcedure(t *testing.T) {
 }
 
 func TestShowCreateProcedure(t *testing.T) {
-	p := parser.New()
+	p := sqlparser.New()
 	stmt, _, err := p.Parse("show create procedure proc_2", "", "")
 	require.NoError(t, err)
 	_, ok := stmt[0].(*ast.ShowStmt)
@@ -128,7 +129,7 @@ func TestProcedureVisitor(t *testing.T) {
 		"show create procedure proc_2;",
 		"drop procedure proc_2;",
 	}
-	parse := parser.New()
+	parse := sqlparser.New()
 	for _, sql := range sqls {
 		stmts, _, err := parse.Parse(sql, "", "")
 		require.NoError(t, err)
