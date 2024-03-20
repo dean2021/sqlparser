@@ -162,7 +162,15 @@ func main() {
 	//	if len(line) < 6 {
 	//		continue
 	//	}
-	node, err := parse(`'string' and 1=2 union select 1;`)
+
+	p := sqlparser.New()
+	p.EnableWindowFunc(false)
+	stmtNodes, err := p.ParseOneStmt(`'string' and 1=2 union select 1`, "", "")
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(stmtNodes)
+	//node, err := parse(`'string' and 1=2 union select 1`)
 	//node, err := parse(`select * from syscat.tabauth xx where grantee = current user`)
 	//node, err := parse(`'string' and substring(password/textz(),1,1)='string'`)
 	//node, err := parse(`select substring(1)`)
@@ -173,13 +181,13 @@ func main() {
 	//node, err := parse(`create table myfile(x TEXT)`)
 	//select substring(1)
 	//select substrings(1)
-	if err != nil {
-		fmt.Println("语法错误:", err)
-		return
-	}
-	v := &SQLiDetect{}
-	(*node).Accept(v)
-	if v.isRisk {
-		fmt.Println("发现sql注入")
-	}
+	//if err != nil {
+	//	fmt.Println("语法错误:", err)
+	//	return
+	//}
+	//v := &SQLiDetect{}
+	//(*node).Accept(v)
+	//if v.isRisk {
+	//	fmt.Println("发现sql注入")
+	//}
 }
