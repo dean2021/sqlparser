@@ -164,7 +164,8 @@ func main() {
 	//	if len(line) < 6 {
 	//		continue
 	//	}
-	node, err := parse(`select * from syscat.tabauth where grantee = current `)
+	node, err := parse(`x union select 1;`)
+	//node, err := parse(`select * from syscat.tabauth xx where grantee = current user`)
 	//node, err := parse(`'string' and substring(password/textz(),1,1)='string'`)
 	//node, err := parse(`select substring(1)`)
 	//node, err := parse(`1 union select 1;`)
