@@ -7628,8 +7628,7 @@ SimpleIdent:
 
 SimpleExpr:
 	SimpleIdent
-
-	// HACK 可能存在歧义，当前的目的是为了兼容select * from syscat.tabauth xx where grantee = current user
+// HACK 可能存在歧义，当前的目的是为了兼容select * from syscat.tabauth xx where grantee = current user
 |	SimpleIdent SimpleIdent
 //|	FunctionCallKeyword
 //|	FunctionCallNonKeyword
@@ -14923,6 +14922,12 @@ CommonExpressionStmt:
 		}
 	}
 |	Expression WaitForStmt
+	{
+		$$ = &ast.CommonExpressionStmt{
+			Expr: $1,
+		}
+	}
+|	Expression UnionSelectStmt
 	{
 		$$ = &ast.CommonExpressionStmt{
 			Expr: $1,

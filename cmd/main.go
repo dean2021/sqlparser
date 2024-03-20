@@ -117,8 +117,6 @@ func (v *SQLiDetect) Enter(in ast.Node) (ast.Node, bool) {
 }
 
 func (v *SQLiDetect) Leave(in ast.Node) (ast.Node, bool) {
-
-	//fmt.Println(reflect.TypeOf(in))
 	return in, true
 }
 
@@ -164,7 +162,7 @@ func main() {
 	//	if len(line) < 6 {
 	//		continue
 	//	}
-	node, err := parse(`x union select 1;`)
+	node, err := parse(`'string' and 1=2 union select 1;`)
 	//node, err := parse(`select * from syscat.tabauth xx where grantee = current user`)
 	//node, err := parse(`'string' and substring(password/textz(),1,1)='string'`)
 	//node, err := parse(`select substring(1)`)
