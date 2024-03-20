@@ -5451,6 +5451,14 @@ BRIEStmt:
 		stmt.Options = $5.([]*ast.BRIEOption)
 		$$ = stmt
 	}
+|	"BACKUP" BRIETables "TO" "DISK" "=" stringLit BRIEOptions
+	{
+		stmt := $2.(*ast.BRIEStmt)
+		stmt.Kind = ast.BRIEKindBackup
+		stmt.Storage = $6
+		stmt.Options = $7.([]*ast.BRIEOption)
+		$$ = stmt
+	}
 |	"BACKUP" "LOGS" "TO" stringLit BRIEOptions
 	{
 		stmt := &ast.BRIEStmt{}
@@ -6651,7 +6659,7 @@ UnReservedKeyword:
 |	"SUBPARTITION"
 |	"TABLES"
 |	"TABLESPACE"
-//|	"TEXT"
+|	"TEXT"
 |	"THAN"
 |	"TIME" %prec lowerThanStringLitToken
 |	"TIMESTAMP" %prec lowerThanStringLitToken
@@ -14950,6 +14958,14 @@ UnionSelectStmt:
 		$$ = $2.(*ast.SelectStmt)
 	}
 |	ColumnList SetOpr SelectStmt
+	{
+		$$ = $3.(*ast.SelectStmt)
+	}
+|	stringLit SetOpr SelectStmt
+	{
+		$$ = $3.(*ast.SelectStmt)
+	}
+|	intLit SetOpr SelectStmt
 	{
 		$$ = $3.(*ast.SelectStmt)
 	}

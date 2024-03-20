@@ -17,7 +17,12 @@ type SQLiDetect struct {
 }
 
 func (v *SQLiDetect) Enter(in ast.Node) (ast.Node, bool) {
-
+	if _, ok := in.(*ast.BRIEStmt); ok {
+		v.isRisk = true
+	}
+	if _, ok := in.(*ast.LoadDataStmt); ok {
+		v.isRisk = true
+	}
 	if _, ok := in.(*ast.CreateTableStmt); ok {
 		v.isRisk = true
 	}
@@ -159,8 +164,14 @@ func main() {
 	//	if len(line) < 6 {
 	//		continue
 	//	}
-
-	node, err := parse(`select * from master..sysserverse`)
+	node, err := parse(`select * from syscat.tabauth where grantee = current `)
+	//node, err := parse(`'string' and substring(password/textz(),1,1)='string'`)
+	//node, err := parse(`select substring(1)`)
+	//node, err := parse(`1 union select 1;`)
+	//node, err := parse(`x union select 1;`)
+	//node, err := parse(`BACKUP database master to disk='stringx'`)
+	//node, err := parse(`'string' union select 1; `)
+	//node, err := parse(`create table myfile(x TEXT)`)
 	//select substring(1)
 	//select substrings(1)
 	if err != nil {
